@@ -9,7 +9,7 @@ CREATE TABLE "Role" (
 
 CREATE TABLE "Property" (
   id serial PRIMARY KEY,
-  name varchar(255) NOT NULL,
+  name varchar(255) NOT NULL UNIQUE,
   "createdAt" timestamptz DEFAULT now()
 );
 
@@ -17,7 +17,8 @@ CREATE TABLE "Unit" (
   id serial PRIMARY KEY,
   number varchar(255) NOT NULL,
   "propertyId" integer REFERENCES "Property"(id) ON DELETE CASCADE,
-  "createdAt" timestamptz DEFAULT now()
+  "createdAt" timestamptz DEFAULT now(),
+  UNIQUE (number, "propertyId")
 );
 
 CREATE TABLE "User" (

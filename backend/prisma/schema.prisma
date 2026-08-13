@@ -30,7 +30,7 @@ model Role {
 
 model Property {
   id        Int    @id @default(autoincrement())
-  name      String
+  name      String @unique
   units     Unit[]
   createdAt DateTime @default(now())
 }
@@ -41,6 +41,8 @@ model Unit {
   property   Property @relation(fields: [propertyId], references: [id])
   propertyId Int
   createdAt  DateTime @default(now())
+
+  @@unique([number, propertyId])
 }
 
 model AuditLog {
