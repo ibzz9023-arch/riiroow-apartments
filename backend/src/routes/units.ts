@@ -1,6 +1,8 @@
 import express from 'express'
 import prisma from '../prismaClient'
 import { z } from 'zod'
+import { authMiddleware } from '../middleware/auth'
+import { permit } from '../middleware/roles'
 
 const router = express.Router()
 
@@ -9,7 +11,7 @@ router.get('/', async (req, res) => {
   res.json(units)
 })
 
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, permit('admin','manager'), async (req, res) => {
   const schema = z.object({ number: z.string(), propertyId: z.number() })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
