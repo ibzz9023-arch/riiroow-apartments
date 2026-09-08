@@ -84,13 +84,6 @@ export const calculatePaymentStatus = (payment = {}) => {
   }
 
   if (paidAmount > 0 && amount > 0 && paidAmount < amount) {
-    if (hasValidPaymentDate(dueDate)) {
-      const due = new Date(`${dueDate}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return due < today ? 'Overdue' : 'Partially Paid';
-    }
-
     return 'Partially Paid';
   }
 
