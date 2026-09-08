@@ -25,6 +25,7 @@ const emptyTenantForm = {
   name: '',
   email: '',
   phone: '',
+  unitId: '',
   unitNumber: '',
   moveInDate: '',
   status: 'Active',
@@ -229,13 +230,14 @@ function App() {
         name: tenantForm.name,
         email: tenantForm.email,
         phone: tenantForm.phone,
+        unitId: tenantForm.unitId,
         unitNumber: Number(tenantForm.unitNumber),
         moveInDate: tenantForm.moveInDate || todayIso(),
         status: tenantForm.status,
       };
 
-      if (!payload.name || !payload.unitNumber) {
-        throw new Error('Tenant name and unit number are required.');
+      if (!payload.name || !payload.unitId || !payload.unitNumber) {
+        throw new Error('Tenant name and unit are required.');
       }
 
       if (editingTenantId) {
@@ -474,6 +476,7 @@ function App() {
       name: tenant.name,
       email: tenant.email || '',
       phone: tenant.phone || '',
+      unitId: tenant.unitId || units.find((unit) => Number(unit.unitNumber) === Number(tenant.unitNumber))?.id || '',
       unitNumber: String(tenant.unitNumber || ''),
       moveInDate: tenant.moveInDate || '',
       status: tenant.status,
@@ -756,8 +759,33 @@ function App() {
                         <input value={tenantForm.name} onChange={(e) => setTenantValue('name', e.target.value)} required />
                       </label>
                       <label>
-                        Unit number
-                        <input type="number" min="101" value={tenantForm.unitNumber} onChange={(e) => setTenantValue('unitNumber', e.target.value)} required />
+                        Apartment unit
+                        <select
+                          value={tenantForm.unitId}
+                          onChange={(e) => {
+                            const selectedUnit = units.find((unit) => String(unit.id) === e.target.value);
+                            setTenantForm((prev) => ({
+                              ...prev,
+                              unitId: e.target.value,
+                              unitNumber: selectedUnit ? String(selectedUnit.unitNumber) : '',
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Select a unit</option>
+                          {units.map((unit) => {
+                            const occupiedByAnotherTenant = tenants.some((tenant) => (
+                              tenant.id !== editingTenantId
+                              && tenant.status === 'Active'
+                              && Number(tenant.unitNumber) === Number(unit.unitNumber)
+                            ));
+                            return (
+                              <option key={unit.id} value={unit.id} disabled={occupiedByAnotherTenant}>
+                                Unit {unit.unitNumber}{occupiedByAnotherTenant ? ' (Occupied)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </label>
                       <label>
                         Email

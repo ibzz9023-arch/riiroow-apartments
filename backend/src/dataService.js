@@ -5,6 +5,7 @@ import { loadData, saveData, seedState, summarizeDashboard } from './store.js';
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const normalizeRoleValue = (value) => String(value || '').trim();
+const assignmentError = (message) => Object.assign(new Error(message), { code: 'TENANT_ASSIGNMENT_VALIDATION' });
 const hashPassword = (value) =>
   crypto.pbkdf2Sync(String(value ?? ''), 'riiroow-apartments-v1', 100000, 64, 'sha512').toString('hex');
 const passwordMatches = (storedPassword, candidatePassword) => {
@@ -43,6 +44,7 @@ const toLegacyUnit = (row = {}) => ({
 const toLegacyTenant = (row = {}) => ({
   id: row.id,
   name: row.name,
+  unitId: row.unit_id ?? row.unitId ?? null,
   unitNumber: row.unit_number ?? row.unitNumber,
   email: row.email,
   phone: row.phone,
@@ -424,6 +426,170 @@ export const loginUser = async ({ email, password }) => {
     token: `demo-token-${safeUser.role}`,
     permissions: safeUser.permissions,
   };
+};
+
+const resolveLocalUnit = (state, unitId, unitNumber) => {
+  const normalizedUnitNumber = Number(unitNumber);
+  const unit = (state.units || []).find((entry) => (
+    (unitId && String(entry.id) === String(unitId))
+    || (!unitId && Number(entry.unit_number ?? entry.unitNumber) === normalizedUnitNumber)
+  ));
+
+  if (!unit) {
+    throw assignmentError('Selected unit does not exist.');
+  }
+
+  return unit;
+};
+
+const hasOtherActiveLocalTenant = (state, unit, tenantId) => (state.tenants || []).some((tenant) => (
+  tenant.id !== tenantId
+  && tenant.status === 'Active'
+  && ((tenant.unit_id && String(tenant.unit_id) === String(unit.id))
+    || (!tenant.unit_id && Number(tenant.unit_number ?? tenant.unitNumber) === Number(unit.unit_number ?? unit.unitNumber)))
+));
+
+const synchronizeLocalUnit = (unit, tenantId, isActive) => {
+  unit.status = isActive ? 'occupied' : 'vacant';
+  unit.occupancy = isActive ? 'Occupied' : 'Vacant';
+  unit.tenant_id = isActive ? tenantId : null;
+};
+
+const getSupabaseUnit = async (propertyId, unitId, unitNumber) => {
+  let query = supabase.from('units').select('*').eq('property_id', propertyId);
+  query = unitId ? query.eq('id', unitId) : query.eq('unit_number', Number(unitNumber));
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  if (!data) throw assignmentError('Selected unit does not exist.');
+  return data;
+};
+
+const assertSupabaseUnitAvailable = async (propertyId, unit, tenantId) => {
+  let query = supabase
+    .from('tenants')
+    .select('id')
+    .eq('property_id', propertyId)
+    .eq('unit_id', unit.id)
+    .eq('status', 'Active');
+  if (tenantId) query = query.neq('id', tenantId);
+  const { data, error } = await query.limit(1);
+
+  if (error) throw error;
+  if (data?.length) throw assignmentError('This unit is already assigned to an active tenant.');
+};
+
+export const createTenant = async (payload) => {
+  if (supabase) {
+    try {
+      const propertyId = await ensureProperty();
+      const unit = await getSupabaseUnit(propertyId, payload.unit_id, payload.unit_number);
+      if (payload.status === 'Active') {
+        await assertSupabaseUnitAvailable(propertyId, unit);
+      }
+
+      const { data, error } = await supabase.from('tenants').insert([{
+        ...payload,
+        property_id: propertyId,
+        unit_id: unit.id,
+        unit_number: unit.unit_number,
+      }]).select().single();
+      if (error) throw error;
+
+      const { error: unitError } = await supabase.from('units').update({
+        status: payload.status === 'Active' ? 'occupied' : 'vacant',
+        occupancy: payload.status === 'Active' ? 'Occupied' : 'Vacant',
+      }).eq('id', unit.id).eq('property_id', propertyId);
+      if (unitError) throw unitError;
+      return data;
+    } catch (error) {
+      if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
+      console.warn('Supabase tenant create failed, writing to local fallback store.', error?.message || error);
+    }
+  }
+
+  const state = loadData();
+  const unit = resolveLocalUnit(state, payload.unit_id, payload.unit_number);
+  if (payload.status === 'Active' && hasOtherActiveLocalTenant(state, unit)) {
+    throw assignmentError('This unit is already assigned to an active tenant.');
+  }
+
+  const tenant = {
+    id: crypto.randomUUID(),
+    ...payload,
+    unit_id: unit.id,
+    unit_number: Number(unit.unit_number ?? unit.unitNumber),
+  };
+  state.tenants = state.tenants || [];
+  state.tenants.push(tenant);
+  synchronizeLocalUnit(unit, tenant.id, tenant.status === 'Active');
+  saveData(state);
+  return tenant;
+};
+
+export const updateTenant = async (id, payload) => {
+  if (supabase) {
+    try {
+      const propertyId = await ensureProperty();
+      const unit = await getSupabaseUnit(propertyId, payload.unit_id, payload.unit_number);
+      if (payload.status === 'Active') {
+        await assertSupabaseUnitAvailable(propertyId, unit, id);
+      }
+
+      const { data: currentTenant, error: currentError } = await supabase
+        .from('tenants')
+        .select('unit_id')
+        .eq('id', id)
+        .eq('property_id', propertyId)
+        .single();
+      if (currentError) throw currentError;
+
+      const { data, error } = await supabase.from('tenants').update({
+        ...payload,
+        unit_id: unit.id,
+        unit_number: unit.unit_number,
+      }).eq('id', id).eq('property_id', propertyId).select().single();
+      if (error) throw error;
+
+      if (currentTenant.unit_id && currentTenant.unit_id !== unit.id) {
+        await supabase.from('units').update({ status: 'vacant', occupancy: 'Vacant' })
+          .eq('id', currentTenant.unit_id).eq('property_id', propertyId);
+      }
+      const { error: unitError } = await supabase.from('units').update({
+        status: payload.status === 'Active' ? 'occupied' : 'vacant',
+        occupancy: payload.status === 'Active' ? 'Occupied' : 'Vacant',
+      }).eq('id', unit.id).eq('property_id', propertyId);
+      if (unitError) throw unitError;
+      return data;
+    } catch (error) {
+      if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
+      console.warn('Supabase tenant update failed, writing to local fallback store.', error?.message || error);
+    }
+  }
+
+  const state = loadData();
+  const tenants = state.tenants || [];
+  const tenantIndex = tenants.findIndex((entry) => String(entry.id) === String(id));
+  if (tenantIndex === -1) throw new Error('Record not found.');
+
+  const currentTenant = tenants[tenantIndex];
+  const unit = resolveLocalUnit(state, payload.unit_id, payload.unit_number);
+  if (payload.status === 'Active' && hasOtherActiveLocalTenant(state, unit, id)) {
+    throw assignmentError('This unit is already assigned to an active tenant.');
+  }
+
+  const previousUnit = resolveLocalUnit(state, currentTenant.unit_id, currentTenant.unit_number);
+  tenants[tenantIndex] = {
+    ...currentTenant,
+    ...payload,
+    unit_id: unit.id,
+    unit_number: Number(unit.unit_number ?? unit.unitNumber),
+  };
+  if (String(previousUnit.id) !== String(unit.id)) {
+    synchronizeLocalUnit(previousUnit, null, false);
+  }
+  synchronizeLocalUnit(unit, id, payload.status === 'Active');
+  saveData(state);
+  return tenants[tenantIndex];
 };
 
 export const createEntity = async (entityName, payload) => {

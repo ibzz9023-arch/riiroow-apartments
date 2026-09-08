@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import {
   createEntity,
+  createTenant,
   deleteEntity,
   getDashboard,
   getLeases,
@@ -14,6 +15,7 @@ import {
   getUsers,
   loginUser,
   updateEntity,
+  updateTenant,
 } from './src/dataService.js';
 import { hasSupabase } from './src/supabaseClient.js';
 
@@ -160,10 +162,11 @@ app.post('/api/units', requireRoles('Admin', 'Manager'), async (req, res) => {
 
 app.post('/api/tenants', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
-    const item = await createEntity('tenants', {
+    const item = await createTenant({
       name: req.body.name,
       email: req.body.email,
       phone: req.body.phone,
+      unit_id: req.body.unitId ?? null,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       move_in_date: req.body.moveInDate ?? req.body.move_in_date,
       status: req.body.status ?? 'Active',
@@ -177,10 +180,11 @@ app.post('/api/tenants', requireRoles('Admin', 'Manager'), async (req, res) => {
 
 app.patch('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
-    const item = await updateEntity('tenants', req.params.id, {
+    const item = await updateTenant(req.params.id, {
       name: req.body.name,
       email: req.body.email,
       phone: req.body.phone,
+      unit_id: req.body.unitId ?? null,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       move_in_date: req.body.moveInDate ?? req.body.move_in_date,
       status: req.body.status,
