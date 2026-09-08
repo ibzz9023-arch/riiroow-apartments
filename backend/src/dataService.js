@@ -685,6 +685,27 @@ const validatePaymentPayload = (payload) => {
   }
 };
 
+const normalizePaymentSchemaPayload = (payload = {}) => {
+  const amount = Number(payload.amount ?? 0);
+  const paidAmount = Number(payload.paidAmount ?? payload.paid_amount ?? 0);
+
+  return {
+    ...payload,
+    amount,
+    paidAmount,
+    paid_amount: paidAmount,
+    due_date: payload.dueDate ?? payload.due_date ?? null,
+    paid_date: payload.paidDate ?? payload.paid_date ?? null,
+    status: calculatePaymentStatus({
+      ...payload,
+      amount,
+      paidAmount,
+      dueDate: payload.dueDate ?? payload.due_date ?? null,
+      paidDate: payload.paidDate ?? payload.paid_date ?? null,
+    }),
+  };
+};
+
 const getLocalPaymentContext = (state, payload) => {
   const tenant = (state.tenants || []).find((entry) => String(entry.id) === String(payload.tenant_id));
   if (!tenant) throw assignmentError('Selected tenant does not exist.');
@@ -733,14 +754,12 @@ export const createPayment = async (payload) => {
     try {
       const propertyId = await ensureProperty();
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
-      const paymentPayload = {
+      const paymentPayload = normalizePaymentSchemaPayload({
         ...payload,
-        paid_amount: Number(payload.paidAmount ?? payload.paid_amount ?? 0),
-        status: calculatePaymentStatus(payload),
         property_id: propertyId,
         unit_id: unit.id,
         unit_number: unit.unit_number,
-      };
+      });
       const { data, error } = await supabase.from('payments').insert([paymentPayload]).select().single();
       if (error) throw error;
       return normalizePaymentRecord({ ...data, paidAmount: data.paid_amount ?? data.paidAmount ?? 0 });
@@ -754,12 +773,11 @@ export const createPayment = async (payload) => {
   const { unit, unitNumber } = getLocalPaymentContext(state, payload);
   const payment = normalizePaymentRecord({
     id: crypto.randomUUID(),
-    ...payload,
-    paidAmount: Number(payload.paidAmount ?? payload.paid_amount ?? 0),
-    paid_amount: Number(payload.paidAmount ?? payload.paid_amount ?? 0),
-    status: calculatePaymentStatus(payload),
-    unit_id: unit.id,
-    unit_number: unitNumber,
+    ...normalizePaymentSchemaPayload({
+      ...payload,
+      unit_id: unit.id,
+      unit_number: unitNumber,
+    }),
   });
   state.payments = state.payments || [];
   state.payments.push(payment);
@@ -774,13 +792,11 @@ export const updatePayment = async (id, payload) => {
     try {
       const propertyId = await ensureProperty();
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
-      const paymentPayload = {
+      const paymentPayload = normalizePaymentSchemaPayload({
         ...payload,
-        paid_amount: Number(payload.paidAmount ?? payload.paid_amount ?? 0),
-        status: calculatePaymentStatus(payload),
         unit_id: unit.id,
         unit_number: unit.unit_number,
-      };
+      });
       const { data, error } = await supabase.from('payments').update(paymentPayload).eq('id', id).eq('property_id', propertyId).select().single();
       if (error) throw error;
       return normalizePaymentRecord({ ...data, paidAmount: data.paid_amount ?? data.paidAmount ?? 0 });
@@ -797,11 +813,11 @@ export const updatePayment = async (id, payload) => {
   const { unit, unitNumber } = getLocalPaymentContext(state, payload);
   payments[paymentIndex] = normalizePaymentRecord({
     ...payments[paymentIndex],
-    ...payload,
-    paidAmount: Number(payload.paidAmount ?? payload.paid_amount ?? payments[paymentIndex].paidAmount ?? 0),
-    paid_amount: Number(payload.paidAmount ?? payload.paid_amount ?? payments[paymentIndex].paidAmount ?? 0),
-    unit_id: unit.id,
-    unit_number: unitNumber,
+    ...normalizePaymentSchemaPayload({
+      ...payload,
+      unit_id: unit.id,
+      unit_number: unitNumber,
+    }),
   });
   saveData(state);
   return payments[paymentIndex];
