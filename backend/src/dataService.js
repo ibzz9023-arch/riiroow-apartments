@@ -91,6 +91,14 @@ const toLegacyMaintenance = (row = {}) => ({
   createdAt: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : null,
 });
 
+const summarizeTenantPayments = (payments) => payments.reduce((totals, payment) => {
+  const amount = Number(payment.amount || 0);
+  if (payment.status === 'Paid') totals.totalPaid += amount;
+  if (payment.status === 'Outstanding') totals.totalOutstanding += amount;
+  if (payment.status === 'Overdue') totals.totalOverdue += amount;
+  return totals;
+}, { totalPaid: 0, totalOutstanding: 0, totalOverdue: 0 });
+
 const toLegacyUser = (row = {}) => ({
   id: row.id,
   name: row.name,
@@ -327,6 +335,43 @@ export const getTenants = async () => {
   }
 
   return loadData().tenants.map(toLegacyTenant);
+};
+
+export const getTenantPayments = async (tenantId) => {
+  if (supabase) {
+    try {
+      const propertyId = await ensureProperty();
+      const { data: tenant, error: tenantError } = await supabase
+        .from('tenants')
+        .select('id, name')
+        .eq('id', tenantId)
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      if (tenantError) throw tenantError;
+      if (!tenant) return null;
+
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('property_id', propertyId)
+        .order('due_date', { ascending: false });
+      if (error) throw error;
+      const payments = (data || []).map(toLegacyPayment);
+      return { tenant, payments, totals: summarizeTenantPayments(payments) };
+    } catch (error) {
+      console.warn('Supabase tenant payments query failed, using local fallback data.', error?.message || error);
+    }
+  }
+
+  const state = loadData();
+  const tenant = (state.tenants || []).find((entry) => String(entry.id) === String(tenantId));
+  if (!tenant) return null;
+  const payments = (state.payments || [])
+    .filter((entry) => String(entry.tenant_id ?? entry.tenantId) === String(tenantId))
+    .map(toLegacyPayment)
+    .sort((first, second) => String(second.dueDate || '').localeCompare(String(first.dueDate || '')));
+  return { tenant: toLegacyTenant(tenant), payments, totals: summarizeTenantPayments(payments) };
 };
 
 export const getLeases = async () => {

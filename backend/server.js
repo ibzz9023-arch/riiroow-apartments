@@ -12,6 +12,7 @@ import {
   getMaintenance,
   getPayments,
   getTenants,
+  getTenantPayments,
   getUnits,
   getUsers,
   loginUser,
@@ -113,6 +114,19 @@ app.get('/api/tenants', requireRoles('Admin', 'Manager', 'Accountant'), async (r
   } catch (error) {
     console.error('Tenants fetch error:', error);
     res.status(500).json({ error: 'Unable to load tenants.' });
+  }
+});
+
+app.get('/api/tenants/:tenantId/payments', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+  try {
+    const result = await getTenantPayments(req.params.tenantId);
+    if (!result) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+    return res.json(result);
+  } catch (error) {
+    console.error('Tenant payments fetch error:', error);
+    return res.status(500).json({ error: 'Unable to load tenant payments.' });
   }
 });
 

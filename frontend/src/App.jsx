@@ -110,6 +110,7 @@ function App() {
   const [editingTenantId, setEditingTenantId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [editingMaintenanceId, setEditingMaintenanceId] = useState(null);
+  const [selectedTenantPayments, setSelectedTenantPayments] = useState(null);
   const [unitForm, setUnitForm] = useState(emptyUnitForm);
   const [tenantForm, setTenantForm] = useState(emptyTenantForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
@@ -324,6 +325,17 @@ function App() {
       await requestJson(`/api/tenants/${tenantId}`, { method: 'DELETE' });
       setInfoMessage('Tenant deleted.');
       await fetchDashboard();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const viewTenantPayments = async (tenant) => {
+    try {
+      setError('');
+      setInfoMessage('');
+      const data = await requestJson(`/api/tenants/${tenant.id}/payments`);
+      setSelectedTenantPayments(data);
     } catch (err) {
       setError(err.message);
     }
@@ -853,6 +865,7 @@ function App() {
                               <td>{tenant.phone}</td>
                               <td><span className={`tag ${getStatusClass(tenant.status)}`}>{tenant.status}</span></td>
                               <td className="action-cell">
+                                <button className="small-btn" onClick={() => viewTenantPayments(tenant)}>Payments</button>
                                 <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
                               </td>
@@ -865,6 +878,52 @@ function App() {
                     )}
                   </div>
                 </section>
+
+                {selectedTenantPayments ? (
+                  <section className="panel">
+                    <div className="panel-header">
+                      <h3>{selectedTenantPayments.tenant.name} payment history</h3>
+                      <button className="secondary-btn" onClick={() => setSelectedTenantPayments(null)}>Close</button>
+                    </div>
+                    <div className="stats-grid">
+                      <StatCard label="Total paid" value={formatCurrency(selectedTenantPayments.totals.totalPaid)} detail="Paid payments" tone="green" />
+                      <StatCard label="Outstanding" value={formatCurrency(selectedTenantPayments.totals.totalOutstanding)} detail="Outstanding payments" tone="amber" />
+                      <StatCard label="Overdue" value={formatCurrency(selectedTenantPayments.totals.totalOverdue)} detail="Overdue payments" tone="red" />
+                    </div>
+                    <div className="table-wrap">
+                      {selectedTenantPayments.payments.length ? (
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Amount</th>
+                              <th>Due date</th>
+                              <th>Paid date</th>
+                              <th>Status</th>
+                              <th>Method</th>
+                              <th>Unit</th>
+                              <th>Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedTenantPayments.payments.map((payment) => (
+                              <tr key={payment.id}>
+                                <td>{formatCurrency(payment.amount)}</td>
+                                <td>{payment.dueDate || '—'}</td>
+                                <td>{payment.paidDate || '—'}</td>
+                                <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
+                                <td>{payment.method || '—'}</td>
+                                <td>{payment.unitNumber || '—'}</td>
+                                <td>{payment.notes || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <EmptyState title="No payments found" message="This tenant has no payment records yet." />
+                      )}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             ) : null}
 
