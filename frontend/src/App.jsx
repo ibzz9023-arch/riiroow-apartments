@@ -36,6 +36,7 @@ const emptyPaymentForm = {
   unitId: '',
   unitNumber: '',
   amount: '',
+  paidAmount: '',
   dueDate: new Date().toISOString().slice(0, 10),
   paidDate: '',
   status: 'Outstanding',
@@ -275,6 +276,7 @@ function App() {
         unitId: paymentForm.unitId,
         unitNumber: Number(paymentForm.unitNumber),
         amount: Number(paymentForm.amount),
+        paidAmount: Number(paymentForm.paidAmount || 0),
         dueDate: paymentForm.dueDate,
         paidDate: paymentForm.paidDate || null,
         status: paymentForm.status,
@@ -510,6 +512,7 @@ function App() {
       unitId: payment.unitId || selectedTenant?.unitId || selectedUnit?.id || '',
       unitNumber: String(payment.unitNumber || ''),
       amount: String(payment.amount || ''),
+      paidAmount: String(payment.paidAmount ?? ''),
       dueDate: payment.dueDate || todayIso(),
       paidDate: payment.paidDate || '',
       status: payment.status,
@@ -886,7 +889,9 @@ function App() {
                       <button className="secondary-btn" onClick={() => setSelectedTenantPayments(null)}>Close</button>
                     </div>
                     <div className="stats-grid">
-                      <StatCard label="Total paid" value={formatCurrency(selectedTenantPayments.totals.totalPaid)} detail="Paid payments" tone="green" />
+                      <StatCard label="Total due" value={formatCurrency(selectedTenantPayments.totals.totalRentDue)} detail="Total rent due" tone="blue" />
+                      <StatCard label="Total paid" value={formatCurrency(selectedTenantPayments.totals.totalPaid)} detail="Amount paid" tone="green" />
+                      <StatCard label="Remaining" value={formatCurrency(selectedTenantPayments.totals.totalRemaining)} detail="Unpaid balance" tone="amber" />
                       <StatCard label="Outstanding" value={formatCurrency(selectedTenantPayments.totals.totalOutstanding)} detail="Outstanding payments" tone="amber" />
                       <StatCard label="Overdue" value={formatCurrency(selectedTenantPayments.totals.totalOverdue)} detail="Overdue payments" tone="red" />
                     </div>
@@ -895,7 +900,9 @@ function App() {
                         <table>
                           <thead>
                             <tr>
-                              <th>Amount</th>
+                              <th>Amount Due</th>
+                              <th>Amount Paid</th>
+                              <th>Remaining</th>
                               <th>Due date</th>
                               <th>Paid date</th>
                               <th>Status</th>
@@ -908,6 +915,8 @@ function App() {
                             {selectedTenantPayments.payments.map((payment) => (
                               <tr key={payment.id}>
                                 <td>{formatCurrency(payment.amount)}</td>
+                                <td>{formatCurrency(payment.paidAmount)}</td>
+                                <td>{formatCurrency(payment.remainingAmount)}</td>
                                 <td>{payment.dueDate || '—'}</td>
                                 <td>{payment.paidDate || '—'}</td>
                                 <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
@@ -1001,8 +1010,16 @@ function App() {
                         <input value={paymentForm.unitNumber ? `Unit ${paymentForm.unitNumber}` : 'Select a tenant'} readOnly required />
                       </label>
                       <label>
-                        Amount
+                        Amount Due
                         <input type="number" min="0" step="0.01" value={paymentForm.amount} onChange={(e) => setPaymentValue('amount', e.target.value)} required />
+                      </label>
+                      <label>
+                        Amount Paid
+                        <input type="number" min="0" step="0.01" value={paymentForm.paidAmount} onChange={(e) => setPaymentValue('paidAmount', e.target.value)} />
+                      </label>
+                      <label>
+                        Remaining Balance
+                        <input type="text" value={formatCurrency(Math.max(0, Number(paymentForm.amount || 0) - Number(paymentForm.paidAmount || 0)))} readOnly />
                       </label>
                       <label>
                         Due date
@@ -1051,7 +1068,9 @@ function App() {
                         <thead>
                           <tr>
                             <th>Unit</th>
-                            <th>Amount</th>
+                            <th>Amount Due</th>
+                            <th>Amount Paid</th>
+                            <th>Remaining</th>
                             <th>Due date</th>
                             <th>Paid date</th>
                             <th>Status</th>
@@ -1063,6 +1082,8 @@ function App() {
                             <tr key={payment.id}>
                               <td>{payment.unitNumber}</td>
                               <td>{formatCurrency(payment.amount)}</td>
+                              <td>{formatCurrency(payment.paidAmount)}</td>
+                              <td>{formatCurrency(payment.remainingAmount)}</td>
                               <td>{payment.dueDate}</td>
                               <td>{payment.paidDate || '—'}</td>
                               <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>

@@ -26,6 +26,10 @@ const generateUnit = (number, floor, bedrooms, rent) => ({
 const normalizeMaintenanceStatus = (value) => String(value || 'Pending').trim() || 'Pending';
 const normalizeMaintenancePriority = (value) => String(value || 'Medium').trim() || 'Medium';
 const normalizePaymentValue = (value) => String(value ?? '').trim();
+const normalizeNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 const statusMatches = (value, expected) => normalizeMaintenanceStatus(value).toLowerCase() === expected.toLowerCase();
 const priorityMatches = (value, expected) => normalizeMaintenancePriority(value).toLowerCase() === expected.toLowerCase();
 const hasValidPaymentDate = (value) => {
@@ -36,13 +40,58 @@ const hasValidPaymentDate = (value) => {
   return !Number.isNaN(parsed.getTime());
 };
 
-export const calculatePaymentStatus = (payment = {}) => {
+const getPaidAmount = (payment = {}) => {
+  const rawPaidAmount = payment.paidAmount ?? payment.paid_amount;
+  if (rawPaidAmount !== undefined && rawPaidAmount !== null && rawPaidAmount !== '') {
+    return Math.max(0, normalizeNumber(rawPaidAmount));
+  }
+
   const rawStatus = normalizePaymentValue(payment.status);
   const paidDate = normalizePaymentValue(payment.paidDate ?? payment.paid_date ?? '');
-  const dueDate = normalizePaymentValue(payment.dueDate ?? payment.due_date ?? '');
 
-  if (hasValidPaymentDate(paidDate)) {
+  if (rawStatus.toLowerCase().includes('paid') || hasValidPaymentDate(paidDate)) {
+    return Math.max(0, normalizeNumber(payment.amount ?? payment.amount_due ?? 0));
+  }
+
+  return 0;
+};
+
+export const normalizePaymentRecord = (payment = {}) => {
+  const amount = Math.max(0, normalizeNumber(payment.amount));
+  const paidAmount = Math.max(0, Math.min(getPaidAmount(payment), amount));
+  const remainingAmount = Math.max(0, amount - paidAmount);
+  const status = calculatePaymentStatus({ ...payment, amount, paidAmount });
+
+  return {
+    ...payment,
+    amount,
+    paidAmount,
+    remainingAmount,
+    dueDate: payment.dueDate ?? payment.due_date ?? null,
+    paidDate: payment.paidDate ?? payment.paid_date ?? null,
+    status,
+  };
+};
+
+export const calculatePaymentStatus = (payment = {}) => {
+  const amount = Math.max(0, normalizeNumber(payment.amount));
+  const paidAmount = Math.max(0, Math.min(normalizeNumber(payment.paidAmount ?? payment.paid_amount ?? 0), amount));
+  const dueDate = normalizePaymentValue(payment.dueDate ?? payment.due_date ?? '');
+  const rawStatus = normalizePaymentValue(payment.status);
+
+  if (amount > 0 && paidAmount >= amount) {
     return 'Paid';
+  }
+
+  if (paidAmount > 0 && amount > 0 && paidAmount < amount) {
+    if (hasValidPaymentDate(dueDate)) {
+      const due = new Date(`${dueDate}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return due < today ? 'Overdue' : 'Partially Paid';
+    }
+
+    return 'Partially Paid';
   }
 
   if (hasValidPaymentDate(dueDate)) {
@@ -52,21 +101,14 @@ export const calculatePaymentStatus = (payment = {}) => {
     return due < today ? 'Overdue' : 'Outstanding';
   }
 
-  if (rawStatus.toLowerCase().includes('overdue')) {
-    return 'Overdue';
-  }
-
-  if (rawStatus.toLowerCase().includes('paid')) {
-    return 'Paid';
-  }
+  if (rawStatus.toLowerCase().includes('overdue')) return 'Overdue';
+  if (rawStatus.toLowerCase().includes('paid')) return 'Paid';
+  if (rawStatus.toLowerCase().includes('partial')) return 'Partially Paid';
 
   return 'Outstanding';
 };
 
-const normalizePaymentRecords = (payments = []) => (payments || []).map((payment) => ({
-  ...payment,
-  status: calculatePaymentStatus(payment),
-}));
+export const normalizePaymentRecords = (payments = []) => (payments || []).map((payment) => normalizePaymentRecord(payment));
 
 export const seedState = () => {
   const units = [
@@ -255,9 +297,11 @@ export const summarizeDashboard = (state) => {
   const vacantUnits = totalUnits - occupiedUnits;
   const totalMonthlyRent = state.units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
   const normalizedPayments = normalizePaymentRecords(state.payments || []);
-  const paidPayments = normalizedPayments.filter((payment) => payment.status === 'Paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const totalOutstanding = normalizedPayments.filter((payment) => payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const totalOverdue = normalizedPayments.filter((payment) => payment.status === 'Overdue').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const totalRentDue = normalizedPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const paidPayments = normalizedPayments.reduce((sum, payment) => sum + Number(payment.paidAmount || 0), 0);
+  const totalRemaining = normalizedPayments.reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
+  const totalOutstanding = normalizedPayments.filter((payment) => payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
+  const totalOverdue = normalizedPayments.filter((payment) => payment.status === 'Overdue').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
   const maintenanceSummary = summarizeMaintenance(state.maintenance || []);
 
   return {
@@ -266,7 +310,9 @@ export const summarizeDashboard = (state) => {
       occupiedUnits,
       vacantUnits,
       totalMonthlyRent,
+      totalRentDue,
       paidPayments,
+      totalRemaining,
       totalOutstanding,
       totalOverdue,
       overduePayments: totalOutstanding + totalOverdue,

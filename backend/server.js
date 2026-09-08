@@ -247,6 +247,7 @@ app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async 
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       amount: Number(req.body.amount ?? 0),
+      paidAmount: Number(req.body.paidAmount ?? req.body.paid_amount ?? 0),
       due_date: req.body.dueDate ?? req.body.due_date,
       paid_date: req.body.paidDate ?? req.body.paid_date ?? null,
       status: req.body.status ?? 'Outstanding',
@@ -256,8 +257,10 @@ app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async 
     res.status(201).json(item);
   } catch (error) {
     console.error('Create payment error:', error);
-    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? 400 : 500).json({
-      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? error.message : 'Unable to record payment.',
+    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' || error.code === 'PAYMENT_VALIDATION' ? 400 : 500).json({
+      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' || error.code === 'PAYMENT_VALIDATION'
+        ? error.message
+        : 'Unable to record payment.',
     });
   }
 });
@@ -269,6 +272,7 @@ app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), a
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       amount: Number(req.body.amount ?? 0),
+      paidAmount: Number(req.body.paidAmount ?? req.body.paid_amount ?? 0),
       due_date: req.body.dueDate ?? req.body.due_date,
       paid_date: req.body.paidDate ?? req.body.paid_date ?? null,
       status: req.body.status,
@@ -278,8 +282,10 @@ app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), a
     res.json(item);
   } catch (error) {
     console.error('Update payment error:', error);
-    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? 400 : 500).json({
-      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? error.message : 'Unable to update payment.',
+    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' || error.code === 'PAYMENT_VALIDATION' ? 400 : 500).json({
+      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' || error.code === 'PAYMENT_VALIDATION'
+        ? error.message
+        : 'Unable to update payment.',
     });
   }
 });
