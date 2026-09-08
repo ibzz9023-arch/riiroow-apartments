@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import {
   createEntity,
+  createPayment,
   createTenant,
   deleteEntity,
   getDashboard,
@@ -15,6 +16,7 @@ import {
   getUsers,
   loginUser,
   updateEntity,
+  updatePayment,
   updateTenant,
 } from './src/dataService.js';
 import { hasSupabase } from './src/supabaseClient.js';
@@ -226,7 +228,7 @@ app.post('/api/leases', requireRoles('Admin', 'Manager'), async (req, res) => {
 
 app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
   try {
-    const item = await createEntity('payments', {
+    const item = await createPayment({
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
@@ -240,13 +242,15 @@ app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async 
     res.status(201).json(item);
   } catch (error) {
     console.error('Create payment error:', error);
-    res.status(500).json({ error: 'Unable to record payment.' });
+    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? 400 : 500).json({
+      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? error.message : 'Unable to record payment.',
+    });
   }
 });
 
 app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
   try {
-    const item = await updateEntity('payments', req.params.id, {
+    const item = await updatePayment(req.params.id, {
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
@@ -260,7 +264,9 @@ app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), a
     res.json(item);
   } catch (error) {
     console.error('Update payment error:', error);
-    res.status(500).json({ error: 'Unable to update payment.' });
+    res.status(error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? 400 : 500).json({
+      error: error.code === 'TENANT_ASSIGNMENT_VALIDATION' ? error.message : 'Unable to update payment.',
+    });
   }
 });
 

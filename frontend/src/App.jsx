@@ -33,6 +33,7 @@ const emptyTenantForm = {
 
 const emptyPaymentForm = {
   tenantId: '',
+  unitId: '',
   unitNumber: '',
   amount: '',
   dueDate: new Date().toISOString().slice(0, 10),
@@ -270,6 +271,7 @@ function App() {
     try {
       const payload = {
         tenantId: paymentForm.tenantId,
+        unitId: paymentForm.unitId,
         unitNumber: Number(paymentForm.unitNumber),
         amount: Number(paymentForm.amount),
         dueDate: paymentForm.dueDate,
@@ -279,8 +281,8 @@ function App() {
         notes: paymentForm.notes,
       };
 
-      if (!payload.unitNumber || !payload.amount) {
-        throw new Error('Unit number and amount are required.');
+      if (!payload.tenantId || !payload.unitId || !payload.unitNumber || !payload.amount) {
+        throw new Error('Tenant, unit, and amount are required.');
       }
 
       if (editingPaymentId) {
@@ -485,9 +487,15 @@ function App() {
   };
 
   const beginEditPayment = (payment) => {
+    const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(payment.tenantId));
+    const selectedUnit = units.find((unit) => (
+      (payment.unitId && String(unit.id) === String(payment.unitId))
+      || Number(unit.unitNumber) === Number(payment.unitNumber)
+    ));
     setEditingPaymentId(payment.id);
     setPaymentForm({
       tenantId: payment.tenantId || '',
+      unitId: payment.unitId || selectedTenant?.unitId || selectedUnit?.id || '',
       unitNumber: String(payment.unitNumber || ''),
       amount: String(payment.amount || ''),
       dueDate: payment.dueDate || todayIso(),
@@ -907,8 +915,31 @@ function App() {
                   <form className="crud-form" onSubmit={handlePaymentSubmit}>
                     <div className="form-grid">
                       <label>
-                        Unit number
-                        <input type="number" min="101" value={paymentForm.unitNumber} onChange={(e) => setPaymentValue('unitNumber', e.target.value)} required />
+                        Tenant
+                        <select
+                          value={paymentForm.tenantId}
+                          onChange={(e) => {
+                            const selectedTenant = tenants.find((tenant) => String(tenant.id) === e.target.value);
+                            const selectedUnit = units.find((unit) => (
+                              (selectedTenant?.unitId && String(unit.id) === String(selectedTenant.unitId))
+                              || Number(unit.unitNumber) === Number(selectedTenant?.unitNumber)
+                            ));
+                            setPaymentForm((prev) => ({
+                              ...prev,
+                              tenantId: e.target.value,
+                              unitId: selectedUnit?.id || '',
+                              unitNumber: selectedUnit ? String(selectedUnit.unitNumber) : '',
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Select a tenant</option>
+                          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        Assigned unit
+                        <input value={paymentForm.unitNumber ? `Unit ${paymentForm.unitNumber}` : 'Select a tenant'} readOnly required />
                       </label>
                       <label>
                         Amount

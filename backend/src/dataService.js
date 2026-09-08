@@ -65,12 +65,14 @@ const toLegacyLease = (row = {}) => ({
 const toLegacyPayment = (row = {}) => ({
   id: row.id,
   tenantId: row.tenant_id ?? row.tenantId,
+  unitId: row.unit_id ?? row.unitId ?? null,
   unitNumber: row.unit_number ?? row.unitNumber,
   amount: Number(row.amount ?? 0),
   dueDate: row.due_date ?? row.dueDate,
   paidDate: row.paid_date ?? row.paidDate ?? null,
   status: row.status ?? 'Outstanding',
   method: row.method ?? 'Unknown',
+  notes: row.notes ?? '',
 });
 
 const toLegacyMaintenance = (row = {}) => ({
@@ -324,7 +326,7 @@ export const getTenants = async () => {
     }
   }
 
-  return loadData().tenants;
+  return loadData().tenants.map(toLegacyTenant);
 };
 
 export const getLeases = async () => {
@@ -590,6 +592,103 @@ export const updateTenant = async (id, payload) => {
   synchronizeLocalUnit(unit, id, payload.status === 'Active');
   saveData(state);
   return tenants[tenantIndex];
+};
+
+const getLocalPaymentContext = (state, payload) => {
+  const tenant = (state.tenants || []).find((entry) => String(entry.id) === String(payload.tenant_id));
+  if (!tenant) throw assignmentError('Selected tenant does not exist.');
+
+  const tenantUnitNumber = Number(tenant.unit_number ?? tenant.unitNumber);
+  const unit = (state.units || []).find((entry) => (
+    (payload.unit_id && String(entry.id) === String(payload.unit_id))
+    || (!payload.unit_id && tenant.unit_id && String(entry.id) === String(tenant.unit_id))
+    || (!payload.unit_id && !tenant.unit_id && Number(entry.unit_number ?? entry.unitNumber) === tenantUnitNumber)
+  ));
+  if (!unit) throw assignmentError('Selected unit does not exist.');
+
+  const unitNumber = Number(unit.unit_number ?? unit.unitNumber);
+  if (unitNumber !== Number(payload.unit_number)
+    || (tenant.unit_id && String(tenant.unit_id) !== String(unit.id))
+    || (!tenant.unit_id && tenantUnitNumber !== unitNumber)) {
+    throw assignmentError('Selected unit does not match the selected tenant.');
+  }
+
+  return { unit, unitNumber };
+};
+
+const getSupabasePaymentContext = async (propertyId, payload) => {
+  const { data: tenant, error: tenantError } = await supabase
+    .from('tenants')
+    .select('id, unit_id, unit_number')
+    .eq('id', payload.tenant_id)
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (tenantError) throw tenantError;
+  if (!tenant) throw assignmentError('Selected tenant does not exist.');
+
+  const unit = await getSupabaseUnit(propertyId, payload.unit_id, payload.unit_number);
+  if ((tenant.unit_id && String(tenant.unit_id) !== String(unit.id))
+    || (!tenant.unit_id && Number(tenant.unit_number) !== Number(unit.unit_number))) {
+    throw assignmentError('Selected unit does not match the selected tenant.');
+  }
+
+  return { unit };
+};
+
+export const createPayment = async (payload) => {
+  if (supabase) {
+    try {
+      const propertyId = await ensureProperty();
+      const { unit } = await getSupabasePaymentContext(propertyId, payload);
+      const { data, error } = await supabase.from('payments').insert([{
+        ...payload,
+        property_id: propertyId,
+        unit_id: unit.id,
+        unit_number: unit.unit_number,
+      }]).select().single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
+      console.warn('Supabase payment create failed, writing to local fallback store.', error?.message || error);
+    }
+  }
+
+  const state = loadData();
+  const { unit, unitNumber } = getLocalPaymentContext(state, payload);
+  const payment = { id: crypto.randomUUID(), ...payload, unit_id: unit.id, unit_number: unitNumber };
+  state.payments = state.payments || [];
+  state.payments.push(payment);
+  saveData(state);
+  return payment;
+};
+
+export const updatePayment = async (id, payload) => {
+  if (supabase) {
+    try {
+      const propertyId = await ensureProperty();
+      const { unit } = await getSupabasePaymentContext(propertyId, payload);
+      const { data, error } = await supabase.from('payments').update({
+        ...payload,
+        unit_id: unit.id,
+        unit_number: unit.unit_number,
+      }).eq('id', id).eq('property_id', propertyId).select().single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
+      console.warn('Supabase payment update failed, writing to local fallback store.', error?.message || error);
+    }
+  }
+
+  const state = loadData();
+  const payments = state.payments || [];
+  const paymentIndex = payments.findIndex((entry) => String(entry.id) === String(id));
+  if (paymentIndex === -1) throw new Error('Record not found.');
+  const { unit, unitNumber } = getLocalPaymentContext(state, payload);
+  payments[paymentIndex] = { ...payments[paymentIndex], ...payload, unit_id: unit.id, unit_number: unitNumber };
+  saveData(state);
+  return payments[paymentIndex];
 };
 
 export const createEntity = async (entityName, payload) => {
