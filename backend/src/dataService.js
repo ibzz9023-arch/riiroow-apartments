@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { supabase, hasSupabase } from './supabaseClient.js';
-import { loadData, saveData, seedState, summarizeDashboard } from './store.js';
+import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus } from './store.js';
 
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,18 +62,22 @@ const toLegacyLease = (row = {}) => ({
   status: row.status ?? 'Active',
 });
 
-const toLegacyPayment = (row = {}) => ({
-  id: row.id,
-  tenantId: row.tenant_id ?? row.tenantId,
-  unitId: row.unit_id ?? row.unitId ?? null,
-  unitNumber: row.unit_number ?? row.unitNumber,
-  amount: Number(row.amount ?? 0),
-  dueDate: row.due_date ?? row.dueDate,
-  paidDate: row.paid_date ?? row.paidDate ?? null,
-  status: row.status ?? 'Outstanding',
-  method: row.method ?? 'Unknown',
-  notes: row.notes ?? '',
-});
+const toLegacyPayment = (row = {}) => {
+  const payment = {
+    id: row.id,
+    tenantId: row.tenant_id ?? row.tenantId,
+    unitId: row.unit_id ?? row.unitId ?? null,
+    unitNumber: row.unit_number ?? row.unitNumber,
+    amount: Number(row.amount ?? 0),
+    dueDate: row.due_date ?? row.dueDate,
+    paidDate: row.paid_date ?? row.paidDate ?? null,
+    status: calculatePaymentStatus(row),
+    method: row.method ?? 'Unknown',
+    notes: row.notes ?? '',
+  };
+
+  return payment;
+};
 
 const toLegacyMaintenance = (row = {}) => ({
   id: row.id,
@@ -91,13 +95,20 @@ const toLegacyMaintenance = (row = {}) => ({
   createdAt: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : null,
 });
 
-const summarizeTenantPayments = (payments) => payments.reduce((totals, payment) => {
-  const amount = Number(payment.amount || 0);
-  if (payment.status === 'Paid') totals.totalPaid += amount;
-  if (payment.status === 'Outstanding') totals.totalOutstanding += amount;
-  if (payment.status === 'Overdue') totals.totalOverdue += amount;
-  return totals;
-}, { totalPaid: 0, totalOutstanding: 0, totalOverdue: 0 });
+const summarizeTenantPayments = (payments) => {
+  const normalizedPayments = (payments || []).map((payment) => ({
+    ...payment,
+    status: calculatePaymentStatus(payment),
+  }));
+
+  return normalizedPayments.reduce((totals, payment) => {
+    const amount = Number(payment.amount || 0);
+    if (payment.status === 'Paid') totals.totalPaid += amount;
+    if (payment.status === 'Outstanding') totals.totalOutstanding += amount;
+    if (payment.status === 'Overdue') totals.totalOverdue += amount;
+    return totals;
+  }, { totalPaid: 0, totalOutstanding: 0, totalOverdue: 0 });
+};
 
 const toLegacyUser = (row = {}) => ({
   id: row.id,
@@ -276,8 +287,9 @@ export const getDashboard = async () => {
       const occupiedUnits = units.filter((unit) => unit.status === 'occupied').length;
       const vacantUnits = totalUnits - occupiedUnits;
       const totalMonthlyRent = units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
-      const paidPayments = payments.filter((payment) => payment.status === 'Paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-      const overduePayments = payments.filter((payment) => payment.status === 'Overdue' || payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const totalPaid = payments.filter((payment) => payment.status === 'Paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const totalOutstanding = payments.filter((payment) => payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const totalOverdue = payments.filter((payment) => payment.status === 'Overdue').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
       const openMaintenance = maintenance.filter((item) => item.status !== 'Resolved').length;
 
       return {
@@ -286,8 +298,10 @@ export const getDashboard = async () => {
           occupiedUnits,
           vacantUnits,
           totalMonthlyRent,
-          paidPayments,
-          overduePayments,
+          paidPayments: totalPaid,
+          totalOutstanding,
+          totalOverdue,
+          overduePayments: totalOutstanding + totalOverdue,
           openMaintenance,
           occupancyRate: totalUnits ? Math.round((occupiedUnits / totalUnits) * 100) : 0,
         },
@@ -399,7 +413,7 @@ export const getPayments = async () => {
     }
   }
 
-  return loadData().payments;
+  return (loadData().payments || []).map(toLegacyPayment);
 };
 
 export const getMaintenance = async () => {
@@ -685,14 +699,16 @@ export const createPayment = async (payload) => {
     try {
       const propertyId = await ensureProperty();
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
-      const { data, error } = await supabase.from('payments').insert([{
+      const paymentPayload = {
         ...payload,
+        status: calculatePaymentStatus(payload),
         property_id: propertyId,
         unit_id: unit.id,
         unit_number: unit.unit_number,
-      }]).select().single();
+      };
+      const { data, error } = await supabase.from('payments').insert([paymentPayload]).select().single();
       if (error) throw error;
-      return data;
+      return { ...data, status: calculatePaymentStatus(data) };
     } catch (error) {
       if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
       console.warn('Supabase payment create failed, writing to local fallback store.', error?.message || error);
@@ -701,7 +717,13 @@ export const createPayment = async (payload) => {
 
   const state = loadData();
   const { unit, unitNumber } = getLocalPaymentContext(state, payload);
-  const payment = { id: crypto.randomUUID(), ...payload, unit_id: unit.id, unit_number: unitNumber };
+  const payment = {
+    id: crypto.randomUUID(),
+    ...payload,
+    status: calculatePaymentStatus(payload),
+    unit_id: unit.id,
+    unit_number: unitNumber,
+  };
   state.payments = state.payments || [];
   state.payments.push(payment);
   saveData(state);
@@ -713,13 +735,15 @@ export const updatePayment = async (id, payload) => {
     try {
       const propertyId = await ensureProperty();
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
-      const { data, error } = await supabase.from('payments').update({
+      const paymentPayload = {
         ...payload,
+        status: calculatePaymentStatus(payload),
         unit_id: unit.id,
         unit_number: unit.unit_number,
-      }).eq('id', id).eq('property_id', propertyId).select().single();
+      };
+      const { data, error } = await supabase.from('payments').update(paymentPayload).eq('id', id).eq('property_id', propertyId).select().single();
       if (error) throw error;
-      return data;
+      return { ...data, status: calculatePaymentStatus(data) };
     } catch (error) {
       if (error.code === 'TENANT_ASSIGNMENT_VALIDATION') throw error;
       console.warn('Supabase payment update failed, writing to local fallback store.', error?.message || error);
@@ -731,7 +755,13 @@ export const updatePayment = async (id, payload) => {
   const paymentIndex = payments.findIndex((entry) => String(entry.id) === String(id));
   if (paymentIndex === -1) throw new Error('Record not found.');
   const { unit, unitNumber } = getLocalPaymentContext(state, payload);
-  payments[paymentIndex] = { ...payments[paymentIndex], ...payload, unit_id: unit.id, unit_number: unitNumber };
+  payments[paymentIndex] = {
+    ...payments[paymentIndex],
+    ...payload,
+    status: calculatePaymentStatus(payload),
+    unit_id: unit.id,
+    unit_number: unitNumber,
+  };
   saveData(state);
   return payments[paymentIndex];
 };
