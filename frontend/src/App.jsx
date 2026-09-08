@@ -55,6 +55,47 @@ const emptyMaintenanceForm = {
   notes: '',
 };
 
+const getStatusClass = (status = '') => {
+  const value = String(status).trim().toLowerCase();
+
+  if (!value) return 'neutral';
+  if (value.includes('occupied')) return 'occupied';
+  if (value.includes('vacant')) return 'vacant';
+  if (value.includes('paid')) return 'paid';
+  if (value.includes('overdue')) return 'overdue';
+  if (value.includes('outstanding')) return 'overdue';
+  if (value.includes('maintenance') || value.includes('emergency')) return 'maintenance';
+  if (value.includes('in progress')) return 'in-progress';
+  if (value.includes('scheduled')) return 'scheduled';
+  if (value.includes('completed') || value.includes('resolved')) return 'resolved';
+  if (value.includes('active')) return 'active';
+  if (value.includes('inactive')) return 'inactive';
+  if (value.includes('pending')) return 'pending';
+
+  return 'neutral';
+};
+
+function DashboardLoading() {
+  return (
+    <div className="loading-state" role="status" aria-live="polite">
+      <div className="loading-spinner" aria-hidden="true" />
+      <div>
+        <strong>Loading dashboard</strong>
+        <p>Gathering occupancy, rent, and maintenance details…</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, message }) {
+  return (
+    <div className="empty-state" role="status" aria-live="polite">
+      <h4>{title}</h4>
+      <p>{message}</p>
+    </div>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
@@ -357,28 +398,34 @@ function App() {
       <div className="auth-shell">
         <div className="auth-card">
           <div className="brand-header">
-            <div className="brand-mark">R</div>
-            <div>
+            <div className="brand-mark" aria-hidden="true">R</div>
+            <div className="brand-copy">
               <p className="eyebrow">Property Management</p>
               <h1>Riiroow Apartments</h1>
             </div>
           </div>
 
-          <form onSubmit={handleLogin} className="auth-form">
+          <div className="auth-intro">
+            Welcome back. Access your apartment operations dashboard.
+          </div>
+
+          <form onSubmit={handleLogin} className="auth-form" aria-live="polite">
             <label>
               Email
-              <input name="email" type="email" defaultValue={initialLogin.email} required />
+              <input name="email" type="email" defaultValue={initialLogin.email} autoComplete="email" required />
             </label>
             <label>
               Password
-              <input name="password" type="password" defaultValue={initialLogin.password} required />
+              <input name="password" type="password" defaultValue={initialLogin.password} autoComplete="current-password" required />
             </label>
-            {error ? <p className="error-text">{error}</p> : null}
-            <button type="submit" className="primary-btn">Sign in</button>
+            {error ? <p className="error-text" role="alert">{error}</p> : null}
+            <button type="submit" className="primary-btn">Sign in to dashboard</button>
           </form>
 
-          <div className="demo-account">
-            <strong>Demo login:</strong> admin@riiroow.com / admin123
+          <div className="demo-account" aria-label="Demo account details">
+            <span className="demo-label">Demo access</span>
+            <strong>admin@riiroow.com</strong>
+            <span>admin123</span>
           </div>
         </div>
       </div>
@@ -521,14 +568,14 @@ function App() {
             <h1>Apartment Management System</h1>
           </div>
           <div className="header-actions">
-            <span className="status-pill">5 Floors · 10 Units</span>
+            <span className="status-pill">{stats.totalUnits ?? 0} Units · {stats.occupiedUnits ?? 0} Occupied</span>
           </div>
         </header>
 
-        {error ? <div className="notice error">{error}</div> : null}
-        {infoMessage ? <div className="notice success">{infoMessage}</div> : null}
+        {error ? <div className="notice error" role="alert">{error}</div> : null}
+        {infoMessage ? <div className="notice success" role="status">{infoMessage}</div> : null}
 
-        {loading ? <p>Loading dashboard...</p> : (
+        {loading ? <DashboardLoading /> : (
           <>
             {activeTab === 'overview' ? (
               <>
@@ -557,12 +604,16 @@ function App() {
                       <h3>Recent payment status</h3>
                     </div>
                     <ul className="list-slim">
-                      {payments.slice(0, 4).map((payment) => (
+                      {payments.length ? payments.slice(0, 4).map((payment) => (
                         <li key={payment.id}>
                           <span>Unit {payment.unitNumber}</span>
-                          <span className={`tag ${String(payment.status).toLowerCase().replace(/\s+/g, '-')}`}>{payment.status}</span>
+                          <span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span>
                         </li>
-                      ))}
+                      )) : (
+                        <li>
+                          <span>No payment activity yet</span>
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </section>
@@ -572,28 +623,32 @@ function App() {
                     <h3>Unit overview</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Unit</th>
-                          <th>Floor</th>
-                          <th>Bedrooms</th>
-                          <th>Rent</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {units.map((unit) => (
-                          <tr key={unit.id}>
-                            <td>{unit.unitNumber}</td>
-                            <td>{unit.floor}</td>
-                            <td>{unit.bedrooms}</td>
-                            <td>{formatCurrency(unit.rent)}</td>
-                            <td><span className="tag occupied">{unit.status}</span></td>
+                    {units.length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Unit</th>
+                            <th>Floor</th>
+                            <th>Bedrooms</th>
+                            <th>Rent</th>
+                            <th>Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {units.map((unit) => (
+                            <tr key={unit.id}>
+                              <td>{unit.unitNumber}</td>
+                              <td>{unit.floor}</td>
+                              <td>{unit.bedrooms}</td>
+                              <td>{formatCurrency(unit.rent)}</td>
+                              <td><span className={`tag ${getStatusClass(unit.status)}`}>{unit.status}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState title="No units found" message="Add a unit to start tracking occupancy, rent, and maintenance." />
+                    )}
                   </div>
                 </section>
               </>
@@ -652,33 +707,37 @@ function App() {
                     <h3>Unit list</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Unit</th>
-                          <th>Floor</th>
-                          <th>Bedrooms</th>
-                          <th>Rent</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {units.map((unit) => (
-                          <tr key={unit.id}>
-                            <td>{unit.unitNumber}</td>
-                            <td>{unit.floor}</td>
-                            <td>{unit.bedrooms}</td>
-                            <td>{formatCurrency(unit.rent)}</td>
-                            <td><span className="tag occupied">{unit.status}</span></td>
-                            <td className="action-cell">
-                              <button className="small-btn" onClick={() => beginEditUnit(unit)}>Edit</button>
-                              <button className="small-btn danger" onClick={() => deleteUnit(unit.id)}>Delete</button>
-                            </td>
+                    {units.length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Unit</th>
+                            <th>Floor</th>
+                            <th>Bedrooms</th>
+                            <th>Rent</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {units.map((unit) => (
+                            <tr key={unit.id}>
+                              <td>{unit.unitNumber}</td>
+                              <td>{unit.floor}</td>
+                              <td>{unit.bedrooms}</td>
+                              <td>{formatCurrency(unit.rent)}</td>
+                              <td><span className={`tag ${getStatusClass(unit.status)}`}>{unit.status}</span></td>
+                              <td className="action-cell">
+                                <button className="small-btn" onClick={() => beginEditUnit(unit)}>Edit</button>
+                                <button className="small-btn danger" onClick={() => deleteUnit(unit.id)}>Delete</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState title="No units available" message="Create a new apartment record to populate this list." />
+                    )}
                   </div>
                 </section>
               </div>
@@ -737,33 +796,37 @@ function App() {
                     <h3>Tenant roster</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Unit</th>
-                          <th>Email</th>
-                          <th>Phone</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tenants.map((tenant) => (
-                          <tr key={tenant.id}>
-                            <td>{tenant.name}</td>
-                            <td>{tenant.unitNumber}</td>
-                            <td>{tenant.email}</td>
-                            <td>{tenant.phone}</td>
-                            <td><span className="tag occupied">{tenant.status}</span></td>
-                            <td className="action-cell">
-                              <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
-                              <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
-                            </td>
+                    {tenants.length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Unit</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {tenants.map((tenant) => (
+                            <tr key={tenant.id}>
+                              <td>{tenant.name}</td>
+                              <td>{tenant.unitNumber}</td>
+                              <td>{tenant.email}</td>
+                              <td>{tenant.phone}</td>
+                              <td><span className={`tag ${getStatusClass(tenant.status)}`}>{tenant.status}</span></td>
+                              <td className="action-cell">
+                                <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
+                                <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState title="No tenants yet" message="Add a resident to begin managing occupancy records." />
+                    )}
                   </div>
                 </section>
               </div>
@@ -775,30 +838,34 @@ function App() {
                   <h3>Lease management</h3>
                 </div>
                 <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Lease</th>
-                        <th>Unit</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>Rent</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(dashboard?.leases || []).map((lease) => (
-                        <tr key={lease.id}>
-                          <td>{lease.id}</td>
-                          <td>{lease.unitNumber}</td>
-                          <td>{lease.startDate}</td>
-                          <td>{lease.endDate}</td>
-                          <td>{formatCurrency(lease.monthlyRent)}</td>
-                          <td><span className="tag occupied">{lease.status}</span></td>
+                  {(dashboard?.leases || []).length ? (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Lease</th>
+                          <th>Unit</th>
+                          <th>Start</th>
+                          <th>End</th>
+                          <th>Rent</th>
+                          <th>Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {(dashboard?.leases || []).map((lease) => (
+                          <tr key={lease.id}>
+                            <td>{lease.id}</td>
+                            <td>{lease.unitNumber}</td>
+                            <td>{lease.startDate}</td>
+                            <td>{lease.endDate}</td>
+                            <td>{formatCurrency(lease.monthlyRent)}</td>
+                            <td><span className={`tag ${getStatusClass(lease.status)}`}>{lease.status}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <EmptyState title="No lease records" message="Lease details will appear here once a resident is assigned." />
+                  )}
                 </div>
               </section>
             ) : null}
@@ -861,33 +928,37 @@ function App() {
                     <h3>Payment history</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Unit</th>
-                          <th>Amount</th>
-                          <th>Due date</th>
-                          <th>Paid date</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payments.map((payment) => (
-                          <tr key={payment.id}>
-                            <td>{payment.unitNumber}</td>
-                            <td>{formatCurrency(payment.amount)}</td>
-                            <td>{payment.dueDate}</td>
-                            <td>{payment.paidDate || '—'}</td>
-                            <td><span className={`tag ${String(payment.status).toLowerCase().replace(/\s+/g, '-')}`}>{payment.status}</span></td>
-                            <td className="action-cell">
-                              <button className="small-btn" onClick={() => beginEditPayment(payment)}>Edit</button>
-                              <button className="small-btn danger" onClick={() => deletePayment(payment.id)}>Delete</button>
-                            </td>
+                    {payments.length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Unit</th>
+                            <th>Amount</th>
+                            <th>Due date</th>
+                            <th>Paid date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {payments.map((payment) => (
+                            <tr key={payment.id}>
+                              <td>{payment.unitNumber}</td>
+                              <td>{formatCurrency(payment.amount)}</td>
+                              <td>{payment.dueDate}</td>
+                              <td>{payment.paidDate || '—'}</td>
+                              <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
+                              <td className="action-cell">
+                                <button className="small-btn" onClick={() => beginEditPayment(payment)}>Edit</button>
+                                <button className="small-btn danger" onClick={() => deletePayment(payment.id)}>Delete</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState title="No payment records" message="Record upcoming rent or payment activity here." />
+                    )}
                   </div>
                 </section>
               </div>
@@ -973,33 +1044,37 @@ function App() {
                     <h3>Maintenance requests</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Unit</th>
-                          <th>Title</th>
-                          <th>Priority</th>
-                          <th>Status</th>
-                          <th>Due</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {maintenance.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.unitNumber}</td>
-                            <td>{item.title}</td>
-                            <td>{item.priority}</td>
-                            <td><span className={`tag ${String(item.status).toLowerCase().replace(/\s+/g, '-')}`}>{item.status}</span></td>
-                            <td>{item.dueDate || '—'}</td>
-                            <td className="action-cell">
-                              <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
-                              <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
-                            </td>
+                    {maintenance.length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Unit</th>
+                            <th>Title</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Due</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {maintenance.map((item) => (
+                            <tr key={item.id}>
+                              <td>{item.unitNumber}</td>
+                              <td>{item.title}</td>
+                              <td>{item.priority}</td>
+                              <td><span className={`tag ${getStatusClass(item.status)}`}>{item.status}</span></td>
+                              <td>{item.dueDate || '—'}</td>
+                              <td className="action-cell">
+                                <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
+                                <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState title="No maintenance requests" message="Track repairs and service work as they come in." />
+                    )}
                   </div>
                 </section>
               </div>
