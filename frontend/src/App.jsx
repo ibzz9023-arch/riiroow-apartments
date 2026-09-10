@@ -807,6 +807,31 @@ function App() {
     }
   };
 
+  const updateMaintenanceStatus = async (item, status) => {
+    try {
+      await requestJson(`/api/maintenance/${item.id}`, {
+        method: 'PATCH',
+        body: {
+          unitNumber: Number(item.unitNumber),
+          title: item.title,
+          description: item.description || '',
+          priority: item.priority,
+          status,
+          assignedTechnician: item.assignedTechnician || '',
+          requestDate: item.requestDate || todayIso(),
+          dueDate: item.dueDate || null,
+          completionDate: status === 'Completed' ? (item.completionDate || todayIso()) : (item.completionDate || null),
+          reminderAt: item.reminderAt || null,
+          notes: item.notes || '',
+        },
+      });
+      setInfoMessage(`Maintenance request marked ${status.toLowerCase()}.`);
+      await fetchDashboard();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const deleteMaintenance = async (maintenanceId) => {
     if (!window.confirm('Delete this maintenance request?')) return;
     try {
@@ -1878,6 +1903,82 @@ function App() {
 
                 <section className="panel">
                   <div className="panel-header">
+                    <h3>Maintenance overview</h3>
+                  </div>
+
+                  <div className="stats-grid">
+                    {(() => {
+                      const pendingMaintenance = maintenance.filter(
+                        (item) => String(item.status).toLowerCase() === 'pending'
+                      );
+                      const inProgressMaintenance = maintenance.filter(
+                        (item) => String(item.status).toLowerCase() === 'in progress'
+                      );
+                      const scheduledMaintenance = maintenance.filter(
+                        (item) => String(item.status).toLowerCase() === 'scheduled'
+                      );
+                      const completedMaintenance = maintenance.filter((item) => {
+                        const status = String(item.status).toLowerCase();
+                        return status === 'completed' || status === 'resolved';
+                      });
+                      const urgentMaintenance = maintenance.filter((item) => {
+                        const priority = String(item.priority).toLowerCase();
+                        return priority === 'high' || priority === 'emergency';
+                      });
+                      const overdueMaintenance = maintenance.filter((item) => {
+                        const status = String(item.status).toLowerCase();
+                        return (
+                          item.dueDate &&
+                          String(item.dueDate).slice(0, 10) < todayIso() &&
+                          status !== 'completed' &&
+                          status !== 'resolved'
+                        );
+                      });
+
+                      return (
+                        <>
+                          <div className="stat-card">
+                            <span>Total Requests</span>
+                            <strong>{maintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Pending</span>
+                            <strong>{pendingMaintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>In Progress</span>
+                            <strong>{inProgressMaintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Scheduled</span>
+                            <strong>{scheduledMaintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Completed</span>
+                            <strong>{completedMaintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Urgent</span>
+                            <strong>{urgentMaintenance.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Overdue</span>
+                            <strong>{overdueMaintenance.length}</strong>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel-header">
                     <h3>Maintenance requests</h3>
                   </div>
                   <div className="table-wrap">
@@ -1889,7 +1990,10 @@ function App() {
                             <th>Title</th>
                             <th>Priority</th>
                             <th>Status</th>
+                            <th>Technician</th>
+                            <th>Requested</th>
                             <th>Due</th>
+                            <th>Completed</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
@@ -1900,8 +2004,20 @@ function App() {
                               <td>{item.title}</td>
                               <td>{item.priority}</td>
                               <td><span className={`tag ${getStatusClass(item.status)}`}>{item.status}</span></td>
+                              <td>{item.assignedTechnician || '—'}</td>
+                              <td>{item.requestDate || '—'}</td>
                               <td>{item.dueDate || '—'}</td>
+                              <td>{item.completionDate || '—'}</td>
                               <td className="action-cell">
+                                {String(item.status).toLowerCase() !== 'in progress' && String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'resolved' && (
+                                  <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'In Progress')}>Start</button>
+                                )}
+                                {String(item.status).toLowerCase() !== 'scheduled' && String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'resolved' && (
+                                  <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Scheduled')}>Schedule</button>
+                                )}
+                                {String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'resolved' && (
+                                  <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Completed')}>Complete</button>
+                                )}
                                 <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
                               </td>
