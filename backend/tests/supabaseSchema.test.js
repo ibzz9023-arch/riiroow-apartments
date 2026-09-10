@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizePaymentRecord } from '../src/store.js';
 
-const schema = readFileSync(resolve(process.cwd(), 'src/supabaseSchema.sql'), 'utf8');
+const schema = readFileSync(resolve(process.cwd(), 'backend/src/supabaseSchema.sql'), 'utf8');
 
 test('payments schema supports partial payment tracking', () => {
   assert.match(schema, /create table if not exists payments \(/);

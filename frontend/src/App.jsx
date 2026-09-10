@@ -31,6 +31,18 @@ const emptyTenantForm = {
   status: 'Active',
 };
 
+const emptyLeaseForm = {
+  tenantId: '',
+  unitId: '',
+  unitNumber: '',
+  startDate: todayIso(),
+  endDate: '',
+  monthlyRent: '',
+  securityDeposit: '',
+  status: 'Active',
+  notes: '',
+};
+
 const emptyPaymentForm = {
   tenantId: '',
   unitId: '',
@@ -78,6 +90,28 @@ const getStatusClass = (status = '') => {
   return 'neutral';
 };
 
+const getLeaseExpirationLabel = (endDate, status = '') => {
+  const normalizedStatus = String(status).trim().toLowerCase();
+
+  if (normalizedStatus === 'terminated') return 'Terminated';
+  if (normalizedStatus === 'expired') return 'Expired';
+  if (!endDate) return 'No end date';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const end = new Date(`${String(endDate).slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(end.getTime())) return '—';
+
+  const difference = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+
+  if (difference < 0) return 'Expired';
+  if (difference === 0) return 'Expires today';
+  if (difference === 1) return '1 day';
+  return `${difference} days`;
+};
+
 function DashboardLoading() {
   return (
     <div className="loading-state" role="status" aria-live="polite">
@@ -109,11 +143,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [editingUnitId, setEditingUnitId] = useState(null);
   const [editingTenantId, setEditingTenantId] = useState(null);
+  const [editingLeaseId, setEditingLeaseId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [editingMaintenanceId, setEditingMaintenanceId] = useState(null);
   const [selectedTenantPayments, setSelectedTenantPayments] = useState(null);
   const [unitForm, setUnitForm] = useState(emptyUnitForm);
   const [tenantForm, setTenantForm] = useState(emptyTenantForm);
+  const [leaseForm, setLeaseForm] = useState(emptyLeaseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
 
@@ -264,6 +300,377 @@ function App() {
       setError(err.message);
     }
   };
+
+  const handleLeaseSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setInfoMessage('');
+
+    try {
+      const body = {
+        tenantId: leaseForm.tenantId,
+        unitId: leaseForm.unitId || null,
+        unitNumber: Number(leaseForm.unitNumber),
+        startDate: leaseForm.startDate,
+        endDate: leaseForm.endDate || null,
+        monthlyRent: Number(leaseForm.monthlyRent || 0),
+        securityDeposit: Number(leaseForm.securityDeposit || 0),
+        status: leaseForm.status,
+        notes: leaseForm.notes,
+      };
+
+      if (editingLeaseId) {
+        await requestJson(`/api/leases/${editingLeaseId}`, {
+          method: 'PATCH',
+          body,
+        });
+        setInfoMessage('Lease updated successfully.');
+      } else {
+        await requestJson('/api/leases', {
+          method: 'POST',
+          body,
+        });
+        setInfoMessage('Lease created successfully.');
+      }
+
+      setLeaseForm(emptyLeaseForm);
+      setEditingLeaseId(null);
+      await fetchDashboard();
+    } catch (submitError) {
+      setError(submitError.message);
+    }
+  };
+
+  const handleTerminateLease = async (lease) => {
+    const confirmed = window.confirm(
+      `Terminate lease ${lease.id} for unit ${lease.unitNumber}?`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setInfoMessage('');
+
+    try {
+      await requestJson(`/api/leases/${lease.id}`, {
+        method: 'DELETE',
+        body: { notes: 'Lease terminated from Lease Management.' },
+      });
+
+      setInfoMessage('Lease terminated successfully.');
+      setLeaseForm(emptyLeaseForm);
+      setEditingLeaseId(null);
+      await fetchDashboard();
+    } catch (terminateError) {
+      setError(terminateError.message);
+    }
+  };
+
+  const printLease = (lease) => {
+    const tenant = tenants.find(
+      (item) => String(item.id) === String(lease.tenantId)
+    );
+
+    const tenantName = tenant?.name || lease.tenantId || '—';
+    const tenantEmail = tenant?.email || '—';
+    const tenantPhone = tenant?.phone || '—';
+
+    const printWindow = window.open('', '_blank', 'width=900,height=1000');
+
+    if (!printWindow) {
+      setError('Please allow pop-ups to print the lease document.');
+      return;
+    }
+
+    const safe = (value) =>
+      String(value ?? '—')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const monthlyRent = formatCurrency(lease.monthlyRent);
+    const securityDeposit = formatCurrency(lease.securityDeposit);
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Riiroow Lease Agreement - ${safe(lease.id)}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #222;
+      max-width: 850px;
+      margin: 0 auto;
+      padding: 25px;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .header {
+      text-align: center;
+      border-bottom: 3px solid #222;
+      padding-bottom: 18px;
+      margin-bottom: 25px;
+    }
+
+    .brand {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      margin: 5px 0;
+      font-weight: 600;
+    }
+
+    .lease-id {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
+
+    h2 {
+      font-size: 17px;
+      margin-top: 25px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #bbb;
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 35px;
+    }
+
+    .detail {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .label {
+      font-weight: 700;
+    }
+
+    .clause {
+      margin: 10px 0;
+    }
+
+    .notes {
+      min-height: 70px;
+      border: 1px solid #ccc;
+      padding: 12px;
+      white-space: pre-wrap;
+    }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      margin-top: 75px;
+    }
+
+    .signature {
+      border-top: 1px solid #222;
+      padding-top: 8px;
+      min-height: 70px;
+    }
+
+    .footer {
+      margin-top: 45px;
+      padding-top: 12px;
+      border-top: 1px solid #ccc;
+      text-align: center;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .status {
+      font-weight: 700;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h1 class="brand">RIIROOW APARTMENT</h1>
+    <div class="subtitle">RESIDENTIAL LEASE AGREEMENT</div>
+    <div class="lease-id">Lease ID: ${safe(lease.id)}</div>
+  </div>
+
+  <h2>1. Tenant Information</h2>
+  <div class="details">
+    <div class="detail">
+      <span class="label">Tenant Name:</span> ${safe(tenantName)}
+    </div>
+    <div class="detail">
+      <span class="label">Phone:</span> ${safe(tenantPhone)}
+    </div>
+    <div class="detail">
+      <span class="label">Email:</span> ${safe(tenantEmail)}
+    </div>
+    <div class="detail">
+      <span class="label">Unit Number:</span> ${safe(lease.unitNumber)}
+    </div>
+  </div>
+
+  <h2>2. Lease Term</h2>
+  <div class="details">
+    <div class="detail">
+      <span class="label">Start Date:</span> ${safe(lease.startDate)}
+    </div>
+    <div class="detail">
+      <span class="label">End Date:</span> ${safe(lease.endDate)}
+    </div>
+    <div class="detail">
+      <span class="label">Lease Status:</span>
+      <span class="status">${safe(lease.status)}</span>
+    </div>
+    <div class="detail">
+      <span class="label">Unit:</span> ${safe(lease.unitNumber)}
+    </div>
+  </div>
+
+  <h2>3. Rent and Security Deposit</h2>
+  <div class="details">
+    <div class="detail">
+      <span class="label">Monthly Rent:</span> ${safe(monthlyRent)}
+    </div>
+    <div class="detail">
+      <span class="label">Security Deposit:</span> ${safe(securityDeposit)}
+    </div>
+  </div>
+
+  <h2>4. Lease Terms and Responsibilities</h2>
+
+  <div class="clause">
+    <strong>Rent:</strong>
+    The tenant agrees to pay the monthly rent stated in this agreement
+    according to the payment terms established by Riiroow Apartment Management.
+  </div>
+
+  <div class="clause">
+    <strong>Use of Property:</strong>
+    The tenant agrees to use the assigned apartment unit responsibly,
+    maintain reasonable cleanliness, and comply with applicable property rules.
+  </div>
+
+  <div class="clause">
+    <strong>Maintenance:</strong>
+    The tenant should promptly report maintenance problems or damage to
+    Riiroow Apartment Management. Tenants are responsible for damage caused
+    by misuse or negligence, subject to applicable agreements and rules.
+  </div>
+
+  <div class="clause">
+    <strong>Termination:</strong>
+    This lease may be terminated according to the agreed lease terms,
+    applicable property rules, and applicable law.
+  </div>
+
+  <div class="clause">
+    <strong>Agreement:</strong>
+    By signing below, both parties acknowledge that they have reviewed the
+    information contained in this lease agreement and agree to the applicable
+    terms and responsibilities.
+  </div>
+
+  <h2>5. Additional Notes</h2>
+  <div class="notes">${safe(lease.notes || 'No additional notes.')}</div>
+
+  <div class="signatures">
+    <div class="signature">
+      <strong>Tenant Signature</strong><br><br>
+      Name: ${safe(tenantName)}<br>
+      Date: ____________________
+    </div>
+
+    <div class="signature">
+      <strong>Riiroow Apartment Management</strong><br><br>
+      Authorized Signature: ____________________<br>
+      Date: ____________________
+    </div>
+  </div>
+
+  <div class="footer">
+    Riiroow Apartment Management — Residential Lease Agreement
+  </div>
+</body>
+</html>`);
+
+    printWindow.document.close();
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+    }, 300);
+  };
+
+  const beginEditLease = (lease) => {
+    setEditingLeaseId(lease.id);
+    setLeaseForm({
+      tenantId: lease.tenantId ?? '',
+      unitId: lease.unitId ?? '',
+      unitNumber: lease.unitNumber ?? '',
+      startDate: lease.startDate ?? todayIso(),
+      endDate: lease.endDate ?? '',
+      monthlyRent: lease.monthlyRent ?? '',
+      securityDeposit: lease.securityDeposit ?? '',
+      status: lease.status ?? 'Active',
+      notes: lease.notes ?? '',
+    });
+    setActiveTab('leases');
+  };
+
+  const cancelEditLease = () => {
+    setEditingLeaseId(null);
+    setLeaseForm(emptyLeaseForm);
+  };
+
+  const handleRenewLease = (lease) => {
+    const currentEndDate = lease.endDate ? String(lease.endDate).slice(0, 10) : '';
+
+    setEditingLeaseId(lease.id);
+    setLeaseForm({
+      tenantId: lease.tenantId ?? '',
+      unitId: lease.unitId ?? '',
+      unitNumber: lease.unitNumber ?? '',
+      startDate: currentEndDate || todayIso(),
+      endDate: '',
+      monthlyRent: lease.monthlyRent ?? '',
+      securityDeposit: lease.securityDeposit ?? '',
+      status: 'Active',
+      notes: `${lease.notes ? `${lease.notes} ` : ''}Lease renewed from ${currentEndDate || 'previous term'}.`,
+    });
+    setActiveTab('leases');
+    setInfoMessage(`Renewing lease ${lease.id}. Enter the new end date and save.`);
+  };
+
 
   const handlePaymentSubmit = async (event) => {
     event.preventDefault();
@@ -937,41 +1344,332 @@ function App() {
             ) : null}
 
             {activeTab === 'leases' ? (
-              <section className="panel">
-                <div className="panel-header">
-                  <h3>Lease management</h3>
-                </div>
-                <div className="table-wrap">
-                  {(dashboard?.leases || []).length ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Lease</th>
-                          <th>Unit</th>
-                          <th>Start</th>
-                          <th>End</th>
-                          <th>Rent</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(dashboard?.leases || []).map((lease) => (
-                          <tr key={lease.id}>
-                            <td>{lease.id}</td>
-                            <td>{lease.unitNumber}</td>
-                            <td>{lease.startDate}</td>
-                            <td>{lease.endDate}</td>
-                            <td>{formatCurrency(lease.monthlyRent)}</td>
-                            <td><span className={`tag ${getStatusClass(lease.status)}`}>{lease.status}</span></td>
+              <div className="stacked-sections">
+                <section className="panel">
+                  <div className="panel-header">
+                    <h3>{editingLeaseId ? 'Edit lease' : 'Add lease'}</h3>
+                  </div>
+
+                  <form className="crud-form" onSubmit={handleLeaseSubmit}>
+                    <div className="form-grid">
+                      <label>
+                        Tenant
+                        <select
+                          value={leaseForm.tenantId}
+                          onChange={(e) => {
+                            const selectedTenant = tenants.find(
+                              (tenant) => String(tenant.id) === e.target.value
+                            );
+
+                            const selectedUnit = units.find((unit) =>
+                              (selectedTenant?.unitId && String(unit.id) === String(selectedTenant.unitId))
+                              || Number(unit.unitNumber) === Number(selectedTenant?.unitNumber)
+                            );
+
+                            setLeaseForm((prev) => ({
+                              ...prev,
+                              tenantId: e.target.value,
+                              unitId: selectedUnit?.id || '',
+                              unitNumber: selectedUnit ? String(selectedUnit.unitNumber) : '',
+                              monthlyRent: selectedUnit?.rent ?? prev.monthlyRent,
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Select a tenant</option>
+                          {tenants.map((tenant) => (
+                            <option key={tenant.id} value={tenant.id}>
+                              {tenant.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Unit
+                        <select
+                          value={leaseForm.unitId}
+                          onChange={(e) => {
+                            const selectedUnit = units.find(
+                              (unit) => String(unit.id) === e.target.value
+                            );
+
+                            setLeaseForm((prev) => ({
+                              ...prev,
+                              unitId: e.target.value,
+                              unitNumber: selectedUnit ? String(selectedUnit.unitNumber) : '',
+                              monthlyRent: selectedUnit?.rent ?? prev.monthlyRent,
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Select a unit</option>
+                          {units.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.unitNumber}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        Start date
+                        <input
+                          type="date"
+                          value={leaseForm.startDate}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            startDate: e.target.value,
+                          }))}
+                          required
+                        />
+                      </label>
+
+                      <label>
+                        End date
+                        <input
+                          type="date"
+                          value={leaseForm.endDate}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            endDate: e.target.value,
+                          }))}
+                        />
+                      </label>
+
+                      <label>
+                        Monthly rent
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={leaseForm.monthlyRent}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            monthlyRent: e.target.value,
+                          }))}
+                          required
+                        />
+                      </label>
+
+                      <label>
+                        Security deposit
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={leaseForm.securityDeposit}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            securityDeposit: e.target.value,
+                          }))}
+                        />
+                      </label>
+
+                      <label>
+                        Status
+                        <select
+                          value={leaseForm.status}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            status: e.target.value,
+                          }))}
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Expired">Expired</option>
+                          <option value="Terminated">Terminated</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Notes
+                        <textarea
+                          value={leaseForm.notes}
+                          onChange={(e) => setLeaseForm((prev) => ({
+                            ...prev,
+                            notes: e.target.value,
+                          }))}
+                          rows="3"
+                          placeholder="Optional lease notes"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="form-actions">
+                      <button className="primary-btn" type="submit">
+                        {editingLeaseId ? 'Update lease' : 'Create lease'}
+                      </button>
+
+                      {editingLeaseId ? (
+                        <button
+                          className="secondary-btn"
+                          type="button"
+                          onClick={cancelEditLease}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
+                  </form>
+                </section>
+
+                <section className="panel">
+                  <div className="panel-header">
+                    <h3>Lease overview</h3>
+                  </div>
+
+                  <div className="stats-grid">
+                    {(() => {
+                      const leases = dashboard?.leases || [];
+                      const activeLeases = leases.filter(
+                        (lease) => String(lease.status).toLowerCase() === 'active'
+                      );
+                      const expiredLeases = leases.filter(
+                        (lease) => String(lease.status).toLowerCase() === 'expired'
+                      );
+                      const terminatedLeases = leases.filter(
+                        (lease) => String(lease.status).toLowerCase() === 'terminated'
+                      );
+                      const expiringSoon = activeLeases.filter((lease) => {
+                        const label = getLeaseExpirationLabel(lease.endDate, lease.status);
+                        const match = label.match(/^(\d+) days?$/);
+                        return match && Number(match[1]) <= 30;
+                      });
+
+                      return (
+                        <>
+                          <div className="stat-card">
+                            <span>Total Leases</span>
+                            <strong>{leases.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Active</span>
+                            <strong>{activeLeases.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Expiring Soon</span>
+                            <strong>{expiringSoon.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Expired</span>
+                            <strong>{expiredLeases.length}</strong>
+                          </div>
+
+                          <div className="stat-card">
+                            <span>Terminated</span>
+                            <strong>{terminatedLeases.length}</strong>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel-header">
+                    <h3>Lease records</h3>
+                  </div>
+
+                  <div className="table-wrap">
+                    {(dashboard?.leases || []).length ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Lease</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Expires In</th>
+                            <th>Rent</th>
+                            <th>Deposit</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <EmptyState title="No lease records" message="Lease details will appear here once a resident is assigned." />
-                  )}
-                </div>
-              </section>
+                        </thead>
+                        <tbody>
+                          {(dashboard?.leases || []).map((lease) => {
+                            const tenant = tenants.find(
+                              (item) => String(item.id) === String(lease.tenantId)
+                            );
+
+                            return (
+                              <tr key={lease.id}>
+                                <td>{lease.id}</td>
+                                <td>{tenant?.name || lease.tenantId || '—'}</td>
+                                <td>{lease.unitNumber}</td>
+                                <td>{lease.startDate || '—'}</td>
+                                <td>{lease.endDate || '—'}</td>
+                                <td>
+                                  <span className={`tag ${getStatusClass(getLeaseExpirationLabel(lease.endDate, lease.status))}`}>
+                                    {getLeaseExpirationLabel(lease.endDate, lease.status)}
+                                  </span>
+                                </td>
+                                <td>{formatCurrency(lease.monthlyRent)}</td>
+                                <td>{formatCurrency(lease.securityDeposit)}</td>
+                                <td>
+                                  <span className={`tag ${getStatusClass(lease.status)}`}>
+                                    {lease.status}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div className="form-actions">
+                                    <button
+                                      className="small-btn"
+                                      type="button"
+                                      onClick={() => beginEditLease(lease)}
+                                    >
+                                      Edit
+                                    </button>
+
+                                    <button
+                                      className="small-btn"
+                                      type="button"
+                                      onClick={() => printLease(lease)}
+                                    >
+                                      Print Lease
+                                    </button>
+
+                                    {String(lease.status).toLowerCase() !== 'terminated' ? (
+                                      <button
+                                        className="small-btn"
+                                        type="button"
+                                        onClick={() => handleRenewLease(lease)}
+                                      >
+                                        Renew
+                                      </button>
+                                    ) : null}
+
+
+                                    {String(lease.status).toLowerCase() !== 'terminated' ? (
+                                      <button
+                                        className="small-btn danger"
+                                        type="button"
+                                        onClick={() => handleTerminateLease(lease)}
+                                      >
+                                        Terminate
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EmptyState
+                        title="No lease records"
+                        message="Lease details will appear here once a resident is assigned."
+                      />
+                    )}
+                  </div>
+                </section>
+              </div>
             ) : null}
 
             {activeTab === 'payments' ? (

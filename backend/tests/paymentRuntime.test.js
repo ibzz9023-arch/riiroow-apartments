@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createPayment, updatePayment } from '../src/dataService.js';
 
-const storeFilePath = resolve(process.cwd(), 'data/store.json');
+const storeFilePath = resolve(process.cwd(), 'backend/data/store.json');
 
 const readStore = () => JSON.parse(readFileSync(storeFilePath, 'utf8'));
 

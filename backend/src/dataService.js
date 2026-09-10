@@ -55,11 +55,14 @@ const toLegacyTenant = (row = {}) => ({
 const toLegacyLease = (row = {}) => ({
   id: row.id,
   tenantId: row.tenant_id ?? row.tenantId,
+  unitId: row.unit_id ?? row.unitId ?? null,
   unitNumber: row.unit_number ?? row.unitNumber,
   startDate: row.start_date ?? row.startDate,
   endDate: row.end_date ?? row.endDate,
   monthlyRent: Number(row.monthly_rent ?? row.monthlyRent ?? 0),
+  securityDeposit: Number(row.security_deposit ?? row.securityDeposit ?? 0),
   status: row.status ?? 'Active',
+  notes: row.notes ?? '',
 });
 
 const toLegacyPayment = (row = {}) => {
@@ -403,18 +406,115 @@ export const getTenantPayments = async (tenantId) => {
   return { tenant: toLegacyTenant(tenant), payments, totals: summarizeTenantPayments(payments) };
 };
 
+export const createLease = async (payload = {}) => {
+  const unitId = payload.unit_id ?? payload.unitId ?? null;
+  const unitNumber = Number(payload.unit_number ?? payload.unitNumber);
+
+  const leases = await getLeases();
+  const conflictingLease = leases.find((lease) => {
+    const sameUnit =
+      (unitId && String(lease.unitId ?? '') === String(unitId)) ||
+      (Number.isFinite(unitNumber) && Number(lease.unitNumber) === unitNumber);
+
+    return sameUnit && String(lease.status || '').toLowerCase() === 'active';
+  });
+
+  if (conflictingLease) {
+    throw Object.assign(
+      new Error('The unit already has an active lease.'),
+      { code: 'LEASE_VALIDATION' }
+    );
+  }
+
+  const result = await createEntity('leases', {
+    tenant_id: payload.tenant_id ?? payload.tenantId,
+    unit_id: unitId,
+    unit_number: unitNumber,
+    start_date: payload.start_date ?? payload.startDate,
+    end_date: payload.end_date ?? payload.endDate,
+    monthly_rent: Number(payload.monthly_rent ?? payload.monthlyRent ?? 0),
+    security_deposit: Number(payload.security_deposit ?? payload.securityDeposit ?? 0),
+    status: payload.status ?? 'Active',
+    notes: payload.notes ?? '',
+  });
+
+  return toLegacyLease(result);
+};
+
+export const updateLease = async (id, payload = {}) => {
+  const updatePayload = {
+    tenant_id: payload.tenant_id ?? payload.tenantId,
+    unit_id: payload.unit_id ?? payload.unitId,
+    unit_number: Number(payload.unit_number ?? payload.unitNumber),
+    start_date: payload.start_date ?? payload.startDate,
+    end_date: payload.end_date ?? payload.endDate,
+    monthly_rent: Number(payload.monthly_rent ?? payload.monthlyRent ?? 0),
+    security_deposit: Number(payload.security_deposit ?? payload.securityDeposit ?? 0),
+    status: payload.status ?? 'Active',
+    notes: payload.notes ?? '',
+  };
+
+  const result = await updateEntity('leases', id, updatePayload);
+  return toLegacyLease(result);
+};
+
+export const terminateLease = async (id, note = '') => {
+  const existing = (await getLeases()).find((lease) => String(lease.id) === String(id));
+
+  if (!existing) {
+    throw new Error('Record not found.');
+  }
+
+  const terminationNote = String(note || '').trim();
+  const existingNotes = String(existing.notes || '').trim();
+  const notes = [existingNotes, terminationNote].filter(Boolean).join(' ');
+
+  const result = await updateEntity('leases', id, {
+    status: 'Terminated',
+    notes,
+  });
+
+  return toLegacyLease(result);
+};
+
+const applyLeaseRuntimeStatus = (lease) => {
+  const normalizedStatus = String(lease.status || '').trim().toLowerCase();
+
+  if (
+    normalizedStatus === 'active' &&
+    lease.endDate &&
+    String(lease.endDate).slice(0, 10) < new Date().toISOString().slice(0, 10)
+  ) {
+    return {
+      ...lease,
+      status: 'Expired',
+    };
+  }
+
+  return lease;
+};
+
 export const getLeases = async () => {
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('leases').select('*').order('start_date', { ascending: false });
+      const { data, error } = await supabase
+        .from('leases')
+        .select('*')
+        .order('start_date', { ascending: false });
+
       if (error) throw error;
-      return (data || []).map(toLegacyLease);
+
+      return (data || [])
+        .map(toLegacyLease)
+        .map(applyLeaseRuntimeStatus);
     } catch (error) {
       console.warn('Supabase leases query failed, using local fallback data.', error?.message || error);
     }
   }
 
-  return loadData().leases;
+  return (loadData().leases || [])
+    .map(toLegacyLease)
+    .map(applyLeaseRuntimeStatus);
 };
 
 export const getPayments = async () => {

@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import {
   createEntity,
+  createLease,
   createPayment,
   createTenant,
   deleteEntity,
@@ -17,8 +18,10 @@ import {
   getUsers,
   loginUser,
   updateEntity,
+  updateLease,
   updatePayment,
   updateTenant,
+  terminateLease,
 } from './src/dataService.js';
 import { hasSupabase } from './src/supabaseClient.js';
 
@@ -224,19 +227,52 @@ app.delete('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res
 
 app.post('/api/leases', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
-    const item = await createEntity('leases', {
+    const item = await createLease({
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       start_date: req.body.startDate ?? req.body.start_date,
       end_date: req.body.endDate ?? req.body.end_date,
       monthly_rent: Number(req.body.monthlyRent ?? req.body.monthly_rent ?? 0),
+      security_deposit: Number(req.body.securityDeposit ?? req.body.security_deposit ?? 0),
       status: req.body.status ?? 'Active',
+      notes: req.body.notes ?? '',
     });
     res.status(201).json(item);
   } catch (error) {
     console.error('Create lease error:', error);
-    res.status(500).json({ error: 'Unable to create lease.' });
+    const status = error.code === 'LEASE_VALIDATION' ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Unable to create lease.' });
+  }
+});
+
+app.patch('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const item = await updateLease(req.params.id, {
+      tenant_id: req.body.tenantId,
+      unit_id: req.body.unitId,
+      unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
+      start_date: req.body.startDate ?? req.body.start_date,
+      end_date: req.body.endDate ?? req.body.end_date,
+      monthly_rent: Number(req.body.monthlyRent ?? req.body.monthly_rent ?? 0),
+      security_deposit: Number(req.body.securityDeposit ?? req.body.security_deposit ?? 0),
+      status: req.body.status ?? 'Active',
+      notes: req.body.notes ?? '',
+    });
+    res.json(item);
+  } catch (error) {
+    console.error('Update lease error:', error);
+    res.status(500).json({ error: error.message || 'Unable to update lease.' });
+  }
+});
+
+app.delete('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const item = await terminateLease(req.params.id, req.body?.notes || '');
+    res.json(item);
+  } catch (error) {
+    console.error('Terminate lease error:', error);
+    res.status(500).json({ error: error.message || 'Unable to terminate lease.' });
   }
 });
 
