@@ -885,6 +885,7 @@ function App() {
   const stats = dashboard?.stats || {};
   const units = dashboard?.units || [];
   const tenants = dashboard?.tenants || [];
+  const leases = dashboard?.leases || [];
   const payments = dashboard?.payments || [];
   const maintenance = dashboard?.maintenance || [];
   const role = String(user?.role || '').toLowerCase();
@@ -896,10 +897,11 @@ function App() {
     ['leases', 'Leases'],
     ['payments', 'Payments'],
     ['maintenance', 'Maintenance'],
+    ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'payments'].includes(key);
-    if (role === 'accountant') return ['overview', 'payments', 'leases'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'payments', 'reports'].includes(key);
+    if (role === 'accountant') return ['overview', 'payments', 'leases', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return true;
   });
@@ -2028,6 +2030,88 @@ function App() {
                     ) : (
                       <EmptyState title="No maintenance requests" message="Track repairs and service work as they come in." />
                     )}
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            {activeTab === 'reports' ? (
+              <div className="content-grid">
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <p className="eyebrow">Reports & Analytics</p>
+                      <h2>Property performance</h2>
+                    </div>
+                  </div>
+
+                  <div className="stats-grid">
+                    <StatCard
+                      label="Total Units"
+                      value={String(stats.totalUnits ?? 0)}
+                      detail={`${stats.occupiedUnits ?? 0} occupied · ${stats.vacantUnits ?? 0} vacant`}
+                      tone="blue"
+                    />
+                    <StatCard
+                      label="Occupancy Rate"
+                      value={`${stats.occupancyRate ?? 0}%`}
+                      detail="Current property occupancy"
+                      tone="green"
+                    />
+                    <StatCard
+                      label="Monthly Rent"
+                      value={formatCurrency(stats.totalMonthlyRent)}
+                      detail="Gross scheduled rent"
+                      tone="green"
+                    />
+                    <StatCard
+                      label="Paid"
+                      value={formatCurrency(stats.paidPayments)}
+                      detail="Recorded payments"
+                      tone="blue"
+                    />
+                    <StatCard
+                      label="Outstanding"
+                      value={formatCurrency(stats.totalOutstanding)}
+                      detail="Unpaid balances"
+                      tone="amber"
+                    />
+                    <StatCard
+                      label="Overdue"
+                      value={formatCurrency(stats.totalOverdue)}
+                      detail="Overdue balances"
+                      tone="red"
+                    />
+                    <StatCard
+                      label="Active Leases"
+                      value={String(leases.filter((lease) => String(lease.status).toLowerCase() === 'active').length)}
+                      detail={`${leases.length} total leases`}
+                      tone="blue"
+                    />
+                    <StatCard
+                      label="Open Maintenance"
+                      value={String(stats.openMaintenance ?? 0)}
+                      detail="Unresolved service requests"
+                      tone="red"
+                    />
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <p className="eyebrow">Portfolio summary</p>
+                      <h2>Current operational snapshot</h2>
+                    </div>
+                  </div>
+
+                  <div className="summary-list">
+                    <div><span>Tenants</span><strong>{tenants.length}</strong></div>
+                    <div><span>Leases</span><strong>{leases.length}</strong></div>
+                    <div><span>Payments recorded</span><strong>{payments.length}</strong></div>
+                    <div><span>Maintenance requests</span><strong>{maintenance.length}</strong></div>
+                    <div><span>Occupied units</span><strong>{stats.occupiedUnits ?? 0}</strong></div>
+                    <div><span>Vacant units</span><strong>{stats.vacantUnits ?? 0}</strong></div>
                   </div>
                 </section>
               </div>
