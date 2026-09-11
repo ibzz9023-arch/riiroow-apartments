@@ -1626,7 +1626,7 @@ function App() {
 
                             return (
                               <tr key={lease.id}>
-                                <td>{lease.id}</td>
+                                <td>Lease #{String(lease.id).split('-').pop() || '—'}</td>
                                 <td>{tenant?.name || lease.tenantId || '—'}</td>
                                 <td>{lease.unitNumber}</td>
                                 <td>{lease.startDate || '—'}</td>
@@ -1639,10 +1639,18 @@ function App() {
                                 <td>{formatCurrency(lease.monthlyRent)}</td>
                                 <td>{formatCurrency(lease.securityDeposit)}</td>
                                 <td>
-                                  <span className={`tag ${getStatusClass(lease.status)}`}>
-                                    {lease.status}
-                                  </span>
-                                </td>
+                                   
+  {(() => {
+    const displayStatus =
+      getLeaseExpirationLabel(lease.endDate, lease.status);
+
+    return (
+      <span className={`tag ${getStatusClass(displayStatus)}`}>
+        {displayStatus}
+      </span>
+    );
+  })()}
+</td>
                                 <td>
                                   <div className="form-actions">
                                     <button
