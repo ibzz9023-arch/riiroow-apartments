@@ -246,7 +246,7 @@ on conflict do nothing;
 -- Seed maintenance requests
 insert into maintenance_requests (id, property_id, tenant_id, unit_id, unit_number, title, description, priority, status)
 values
-  ('77777777-7777-7777-7777-777777777701', '11111111-1111-1111-1111-111111111111'::uuid, '44444444-4444-4444-4444-444444444403'::uuid, '33333333-3333-3333-3333-333333333303'::uuid, 201, 'HVAC not cooling', 'Air conditioner is running but not cooling the living room', 'High', 'In progress'),
-  ('77777777-7777-7777-7777-777777777702', '11111111-1111-1111-1111-111111111111'::uuid, '44444444-4444-4444-4444-444444444406'::uuid, '33333333-3333-3333-3333-333333333306'::uuid, 302, 'Leaking kitchen sink', 'Drain pipe is leaking beneath sink cabinet', 'Medium', 'Open'),
+  ('77777777-7777-7777-7777-777777777701', '11111111-1111-1111-1111-111111111111'::uuid, '44444444-4444-4444-4444-444444444403'::uuid, '33333333-3333-3333-3333-333333333303'::uuid, 201, 'HVAC not cooling', 'Air conditioner is running but not cooling the living room', 'High', 'In Progress'),
+  ('77777777-7777-7777-7777-777777777702', '11111111-1111-1111-1111-111111111111'::uuid, '44444444-4444-4444-4444-444444444406'::uuid, '33333333-3333-3333-3333-333333333306'::uuid, 302, 'Leaking kitchen sink', 'Drain pipe is leaking beneath sink cabinet', 'Medium', 'Pending'),
   ('77777777-7777-7777-7777-777777777703', '11111111-1111-1111-1111-111111111111'::uuid, '44444444-4444-4444-4444-444444444410'::uuid, '33333333-3333-3333-3333-333333333310'::uuid, 502, 'Light fixture replacement', 'Bathroom vanity light flickers after power surge', 'Low', 'Scheduled')
 on conflict do nothing;
