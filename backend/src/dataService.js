@@ -892,14 +892,40 @@ export const updatePayment = async (id, payload) => {
     try {
       const propertyId = await ensureProperty();
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
-      const paymentPayload = normalizePaymentSchemaPayload({
+
+      const normalizedPayment = normalizePaymentSchemaPayload({
         ...payload,
         unit_id: unit.id,
         unit_number: unit.unit_number,
       });
-      const { data, error } = await supabase.from('payments').update(paymentPayload).eq('id', id).eq('property_id', propertyId).select().single();
+
+      const paymentPayload = {
+          nant_id: normalizedPayment.tenant_id ?? normalizedPayment.tenantId ?? payload.tenant_id ?? payload.tenantId ?? null,
+        unit_id: normalizedPayment.unit_id,
+        unit_number: normalizedPayment.unit_number,
+        amount: normalizedPayment.amount,
+        paid_amount: normalizedPayment.paid_amount ?? normalizedPayment.paidAmount ?? 0,
+        due_date: normalizedPayment.due_date ?? normalizedPayment.dueDate ?? null,
+        paid_date: normalizedPayment.paid_date ?? normalizedPayment.paidDate ?? null,
+        status: normalizedPayment.status,
+        method: normalizedPayment.method ?? null,
+        notes: normalizedPayment.notes ?? '',
+      };
+
+      const { data, error } = await supabase
+        .from('payments')
+        .update(paymentPayload)
+        .eq('id', id)
+        .eq('property_id', propertyId)
+        .select()
+        .single();
+
       if (error) throw error;
-      return normalizePaymentRecord({ ...data, paidAmount: data.paid_amount ?? data.paidAmount ?? 0 });
+
+      return normalizePaymentRecord({
+        ...data,
+        paidAmount: data.paid_amount ?? data.paidAmount ?? 0,
+      });
     } catch (error) {
       if (error.code === 'TENANT_ASSIGNMENT_VALIDATION' || error.code === 'PAYMENT_VALIDATION') throw error;
       console.warn('Supabase payment update failed, writing to local fallback store.', error?.message || error);
