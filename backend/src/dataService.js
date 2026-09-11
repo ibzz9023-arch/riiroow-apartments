@@ -772,6 +772,19 @@ const validatePaymentPayload = (payload) => {
   const amount = Number(payload.amount ?? 0);
   const paidAmount = Number(payload.paidAmount ?? payload.paid_amount ?? 0);
 
+  const dueDate = payload.due_date ?? payload.dueDate ?? null;
+  if (!dueDate || String(dueDate).trim() === '') {
+    throw Object.assign(new Error('Due date is required.'), { code: 'PAYMENT_VALIDATION' });
+  }
+  if (Number.isNaN(new Date(dueDate).getTime())) {
+    throw Object.assign(new Error('Due date must be a valid date.'), { code: 'PAYMENT_VALIDATION' });
+  }
+
+  const tenantId = payload.tenant_id ?? payload.tenantId ?? null;
+  if (!tenantId || String(tenantId).trim() === '') {
+    throw Object.assign(new Error('Tenant is required.'), { code: 'PAYMENT_VALIDATION' });
+  }
+
   if (amount < 0) {
     throw Object.assign(new Error('Amount must be greater than or equal to 0.'), { code: 'PAYMENT_VALIDATION' });
   }
