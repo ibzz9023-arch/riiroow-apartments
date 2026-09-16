@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createEntity,
   createLease,
@@ -27,6 +28,10 @@ import { hasSupabase } from './src/supabaseClient.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDist = path.resolve(__dirname, '../frontend/dist');
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -422,6 +427,16 @@ app.delete('/api/units/:id', requireRoles('Admin'), async (req, res) => {
     console.error('Delete unit error:', error);
     res.status(500).json({ error: 'Unable to delete unit.' });
   }
+});
+
+app.use(express.static(frontendDist));
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+
+  return res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 app.use((err, req, res, next) => {
