@@ -1,20 +1,20 @@
 :root {
-  --bg: #f4f7fb;
+  --bg: #f5f5f3;
   --panel: #ffffff;
-  --panel-alt: #eef3ff;
-  --primary: #1f5eff;
-  --primary-dark: #163eb5;
-  --primary-soft: #ebf2ff;
-  --success: #14b87a;
-  --success-soft: rgba(20, 184, 122, 0.12);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.12);
-  --danger: #ef4444;
-  --danger-soft: rgba(239, 68, 68, 0.1);
-  --text: #18212f;
-  --muted: #57657d;
-  --border: #dfe6f2;
-  --shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  --panel-alt: #f1f0ec;
+  --primary: #c88a28;
+  --primary-dark: #9a6416;
+  --primary-soft: #f8edd8;
+  --success: #16805c;
+  --success-soft: rgba(22, 128, 92, 0.12);
+  --warning: #c88a28;
+  --warning-soft: rgba(200, 138, 40, 0.14);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.1);
+  --text: #1c1c1a;
+  --muted: #6b6a63;
+  --border: #e4e1d9;
+  --shadow: 0 12px 32px rgba(28, 28, 26, 0.07);
 }
 
 * {
@@ -35,7 +35,7 @@ button, input, select, textarea {
 
 body {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f4f7fb 0%, #eef3fb 100%);
+  background: linear-gradient(180deg, #f7f7f5 0%, #efeee9 100%);
 }
 
 button {
@@ -53,7 +53,7 @@ button:hover {
 
 .sidebar {
   width: 280px;
-  background: linear-gradient(180deg, #0d1729 0%, #111f3a 100%);
+  background: linear-gradient(180deg, #171717 0%, #242321 100%);
   color: #edf4ff;
   padding: 24px 18px;
   display: flex;
@@ -118,7 +118,7 @@ button:hover {
 .nav-btn.active {
   background: rgba(122, 178, 255, 0.15);
   border-color: rgba(122, 178, 255, 0.32);
-  color: #f8fbff;
+  color: #fafaf8;
 }
 
 .user-card {
@@ -164,7 +164,7 @@ button:hover {
 .status-pill {
   background: var(--primary-soft);
   color: var(--primary-dark);
-  border: 1px solid #d9e4ff;
+  border: 1px solid #ead9b8;
   border-radius: 999px;
   padding: 8px 12px;
   font-weight: 700;
@@ -296,7 +296,7 @@ th {
   padding: 6px 10px;
   font-size: 0.74rem;
   font-weight: 700;
-  background: #edf5ff;
+  background: #f8edd8;
   color: var(--primary-dark);
   border: 1px solid transparent;
 }
@@ -363,7 +363,7 @@ th {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 11px 12px;
-  background: #f8fbff;
+  background: #fafaf8;
   color: var(--text);
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -401,7 +401,7 @@ th {
   border: none;
   border-radius: 8px;
   padding: 6px 10px;
-  background: #e9f2ff;
+  background: #f5ead6;
   color: var(--primary-dark);
   cursor: pointer;
   font-weight: 700;
@@ -433,7 +433,7 @@ th {
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #9fbbff 0%, #1f5eff 100%);
+  background: linear-gradient(135deg, #e1b96a 0%, #c88a28 100%);
   color: white;
   font-size: 1.5rem;
   font-weight: 800;
@@ -460,7 +460,7 @@ th {
   display: grid;
   gap: 6px;
   margin-top: 12px;
-  background: #f8fbff;
+  background: #fafaf8;
 }
 
 .empty-state h4 {
@@ -480,7 +480,7 @@ th {
 }
 
 .ghost-btn.light {
-  background: #edf3ff;
+  background: #f5ead6;
   color: var(--primary-dark);
 }
 
@@ -488,7 +488,7 @@ th {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at top, #eaf2ff 0%, #f5f7fb 38%, #edf2f8 100%);
+  background: radial-gradient(circle at top, #f3eadb 0%, #f8f7f4 38%, #efeee9 100%);
   padding: 24px;
 }
 
@@ -745,3 +745,172 @@ th {
     height: 38px;
   }
 }
+
+/* =========================================================
+   RIIROOW PREMIUM BRANDING
+   ========================================================= */
+
+.sidebar {
+  width: 270px;
+  background: linear-gradient(180deg, #171717 0%, #22211f 100%);
+  padding: 28px 18px;
+  gap: 24px;
+  box-shadow: 8px 0 30px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-brand {
+  padding: 4px 8px 22px;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #e1b96a 0%, #b8791d 100%);
+  color: #171717;
+  font-size: 1.15rem;
+  font-weight: 900;
+  box-shadow: 0 8px 22px rgba(200, 138, 40, 0.25);
+}
+
+.sidebar-brand h2 {
+  color: #ffffff;
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.nav {
+  gap: 6px;
+}
+
+.nav-btn {
+  padding: 13px 14px;
+  border-radius: 10px;
+  color: #bdbbb5;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.nav-btn.active {
+  background: linear-gradient(90deg, rgba(200, 138, 40, 0.2), rgba(200, 138, 40, 0.06));
+  border-color: rgba(200, 138, 40, 0.3);
+  color: #f3d18b;
+  box-shadow: inset 3px 0 0 #c88a28;
+}
+
+.user-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.user-card strong {
+  color: #f3d18b;
+}
+
+.logo-box {
+  background: linear-gradient(135deg, #e1b96a 0%, #b8791d 100%);
+  color: #1c1c1a;
+  box-shadow: 0 8px 20px rgba(200, 138, 40, 0.18);
+}
+
+
+/* RIIROOW PREMIUM CONTENT STYLING */
+
+.topbar {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid #e4e1d9;
+  box-shadow: 0 4px 18px rgba(30, 25, 15, 0.04);
+}
+
+.topbar h1,
+.page-header h1 {
+  color: #1c1c1a;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.stat-card,
+.card,
+.panel,
+.dashboard-card {
+  border: 1px solid #e4e1d9;
+  box-shadow: 0 8px 24px rgba(30, 25, 15, 0.05);
+  border-radius: 16px;
+}
+
+.stat-card:hover,
+.card:hover,
+.dashboard-card:hover {
+  box-shadow: 0 12px 30px rgba(30, 25, 15, 0.08);
+}
+
+.stat-card h3,
+.stat-card strong {
+  color: #1c1c1a;
+}
+
+.primary-btn,
+button.primary,
+.btn-primary {
+  background: linear-gradient(135deg, #c88a28, #a96d18);
+  border-color: #a96d18;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 5px 12px rgba(200, 138, 40, 0.18);
+}
+
+.primary-btn:hover,
+button.primary:hover,
+.btn-primary:hover {
+  background: linear-gradient(135deg, #d49a35, #b8791d);
+  transform: translateY(-1px);
+}
+
+.badge,
+.status-badge {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #dcd8ce;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #c88a28;
+  box-shadow: 0 0 0 3px rgba(200, 138, 40, 0.12);
+  outline: none;
+}
+
+table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+thead th {
+  background: #f7f3ea;
+  color: #6b6a63;
+  font-weight: 800;
+}
+
+tbody tr:hover {
+  background: #fffaf1;
+}
+
