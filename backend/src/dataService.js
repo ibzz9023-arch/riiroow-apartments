@@ -927,7 +927,7 @@ export const updatePayment = async (id, payload) => {
       });
 
       const paymentPayload = {
-          nant_id: normalizedPayment.tenant_id ?? normalizedPayment.tenantId ?? payload.tenant_id ?? payload.tenantId ?? null,
+          tenant_id: normalizedPayment.tenant_id ?? normalizedPayment.tenantId ?? payload.tenant_id ?? payload.tenantId ?? null,
         unit_id: normalizedPayment.unit_id,
         unit_number: normalizedPayment.unit_number,
         amount: normalizedPayment.amount,
