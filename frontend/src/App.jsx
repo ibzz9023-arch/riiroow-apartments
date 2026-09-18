@@ -8,7 +8,7 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
-const initialLogin = { email: 'ibrazzmaj@mail.com', password: 'admin123' };
+const initialLogin = { email: 'admin@riiroow.com', password: 'admin123' };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -156,7 +156,8 @@ function App() {
 
   const requestJson = async (path, options = {}) => {
     const { method = 'GET', body, headers = {} } = options;
-    const response = await fetch(path, {
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const response = await fetch(`${apiBaseUrl}${path}`, {
       method,
       headers: {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -252,8 +253,8 @@ const handleLogin = async (event) => {
 
     try {
       const formData = new FormData(event.currentTarget);
-      const email = formData.get('email');
-      const password = formData.get('password');
+      const email = String(formData.get('email') || '').trim().toLowerCase();
+      const password = String(formData.get('password') || '').trim();
 
       const data = await requestJson('/api/auth/login', {
         method: 'POST',
@@ -609,7 +610,7 @@ const handleLogin = async (event) => {
 <body>
   <div class="header">
     <div class="brand-logo">
-      <img src="${window.location.origin}/riiroow-logo.png" alt="Riiroow Apartments">
+      <img src="${window.location.origin}${import.meta.env.BASE_URL}riiroow-logo.png" alt="Riiroow Apartments">
     </div>
     <h1 class="brand">RIIROOW APARTMENT</h1>
     <div class="subtitle">RESIDENTIAL LEASE AGREEMENT</div>
@@ -941,7 +942,7 @@ const handleLogin = async (event) => {
       <div className="auth-shell">
         <div className="auth-card">
           <div className="brand-header">
-            <div className="brand-mark"><img src="/riiroow-logo.png" alt="Riiroow Apartments logo" /></div>
+            <div className="brand-mark"><img src={`${import.meta.env.BASE_URL}riiroow-logo.png`} alt="Riiroow Apartments logo" /></div>
             <div className="brand-copy">
               <p className="eyebrow">Property Management</p>
               <h1>Riiroow Apartments</h1>
@@ -1074,7 +1075,7 @@ const handleLogin = async (event) => {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark"><img src="/riiroow-logo.png" alt="Riiroow Apartments logo" /></div>
+          <div className="brand-mark"><img src={`${import.meta.env.BASE_URL}riiroow-logo.png`} alt="Riiroow Apartments logo" /></div>
           <div>
             <p className="eyebrow">Apartment</p>
             <h2>Riiroow</h2>
