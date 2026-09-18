@@ -899,7 +899,7 @@ const handleLogin = async (event) => {
       <div className="auth-shell">
         <div className="auth-card">
           <div className="brand-header">
-            <div className="brand-mark" aria-hidden="true">R</div>
+            <div className="brand-mark"><img src="/riiroow-logo.png" alt="Riiroow Apartments logo" /></div>
             <div className="brand-copy">
               <p className="eyebrow">Property Management</p>
               <h1>Riiroow Apartments</h1>
@@ -1032,7 +1032,7 @@ const handleLogin = async (event) => {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark">R</div>
+          <div className="brand-mark"><img src="/riiroow-logo.png" alt="Riiroow Apartments logo" /></div>
           <div>
             <p className="eyebrow">Apartment</p>
             <h2>Riiroow</h2>
