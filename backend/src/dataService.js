@@ -907,16 +907,20 @@ const getLocalPaymentContext = (state, payload) => {
 };
 
 const getSupabasePaymentContext = async (propertyId, payload) => {
+  const tenantId = payload.tenant_id ?? payload.tenantId;
+  const unitId = payload.unit_id ?? payload.unitId;
+  const unitNumber = payload.unit_number ?? payload.unitNumber;
+
   const { data: tenant, error: tenantError } = await supabase
     .from('tenants')
     .select('id, unit_id, unit_number')
-    .eq('id', payload.tenant_id)
+    .eq('id', tenantId)
     .eq('property_id', propertyId)
     .maybeSingle();
   if (tenantError) throw tenantError;
   if (!tenant) throw assignmentError('Selected tenant does not exist.');
 
-  const unit = await getSupabaseUnit(propertyId, payload.unit_id, payload.unit_number);
+  const unit = await getSupabaseUnit(propertyId, unitId, unitNumber);
   if ((tenant.unit_id && String(tenant.unit_id) !== String(unit.id))
     || (!tenant.unit_id && Number(tenant.unit_number) !== Number(unit.unit_number))) {
     throw assignmentError('Selected unit does not match the selected tenant.');
