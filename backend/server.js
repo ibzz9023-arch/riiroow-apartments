@@ -37,6 +37,15 @@ const frontendDist = path.resolve(__dirname, '../frontend/dist');
 const app = express();
 const port = Number(process.env.PORT || 5000);
 
+// Basic production security headers.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 
@@ -74,7 +83,33 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.post('/api/auth/login', async (req, res) => {
+// Lightweight in-memory login protection.
+// This protects the running API without changing the existing authentication flow.
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+
+const loginRateLimit = (req, res, next) => {
+  const key = String(req.ip || req.socket?.remoteAddress || 'unknown');
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+
+  if (!current || now - current.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { firstAttempt: now, count: 1 });
+    return next();
+  }
+
+  if (current.count >= LOGIN_MAX_ATTEMPTS) {
+    return res.status(429).json({
+      error: 'Too many login attempts. Please try again later.'
+    });
+  }
+
+  current.count += 1;
+  next();
+};
+
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     const loginResult = await loginUser({ email, password });

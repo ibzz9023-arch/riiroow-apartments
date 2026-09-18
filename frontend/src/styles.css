@@ -926,3 +926,58 @@ tbody tr:hover {
   object-fit: contain;
   display: block;
 }
+
+
+/* RIIROOW V1.1 RESPONSIVE SAFETY */
+@media (max-width: 900px) {
+  .app-shell {
+    overflow-x: hidden;
+  }
+
+  .main-content,
+  .content,
+  main {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  table {
+    max-width: 100%;
+  }
+
+  .table-wrap,
+  .table-container,
+  .data-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-header,
+  .section-header,
+  .toolbar,
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .card-grid,
+  .stats-grid,
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modal,
+  .dialog,
+  .form-card {
+    max-width: calc(100vw - 24px);
+  }
+}
