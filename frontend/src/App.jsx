@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { supabase } from './supabaseClient';
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -194,7 +195,57 @@ function App() {
     }
   }, [token]);
 
-  const handleLogin = async (event) => {
+  useEffect(() => {
+    const handleGoogleSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error || !data?.session?.access_token) {
+        return;
+      }
+
+      try {
+        const result = await requestJson('/api/auth/google', {
+          method: 'POST',
+          body: {
+            accessToken: data.session.access_token,
+          },
+        });
+
+        setUser(result.user);
+        setToken(result.token);
+        setActiveTab('overview');
+        setError('');
+        setInfoMessage('');
+      } catch (err) {
+        setError(err.message || 'Unable to complete Google login.');
+        await supabase.auth.signOut();
+      }
+    };
+
+    handleGoogleSession();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+  setError('');
+  setInfoMessage('');
+
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  } catch (err) {
+    setError(err.message || 'Unable to continue with Google.');
+  }
+};
+
+const handleLogin = async (event) => {
     event.preventDefault();
     setError('');
     setInfoMessage('');
@@ -870,13 +921,11 @@ function App() {
             </label>
             {error ? <p className="error-text" role="alert">{error}</p> : null}
             <button type="submit" className="primary-btn">Sign in to dashboard</button>
+  <button type="button" className="ghost-btn" onClick={handleGoogleLogin}>
+    Continue with Google
+  </button>
           </form>
 
-          <div className="demo-account" aria-label="Demo account details">
-            <span className="demo-label">Demo access</span>
-            <strong>admin@riiroow.com</strong>
-            <span>admin123</span>
-          </div>
         </div>
       </div>
     );

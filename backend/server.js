@@ -23,8 +23,9 @@ import {
   updatePayment,
   updateTenant,
   terminateLease,
+  toLegacyUser,
 } from './src/dataService.js';
-import { hasSupabase } from './src/supabaseClient.js';
+import { hasSupabase, supabase } from './src/supabaseClient.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -86,6 +87,52 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Unable to complete login.' });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { accessToken } = req.body || {};
+
+    if (!supabase || !accessToken) {
+      return res.status(401).json({ error: 'Google authentication is unavailable.' });
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+
+    if (authError || !authData?.user?.email) {
+      return res.status(401).json({ error: 'Invalid Google authentication.' });
+    }
+
+    const email = authData.user.email.toLowerCase().trim();
+
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .limit(1);
+
+    if (userError) throw userError;
+
+    const matchingUser = users?.[0];
+
+    if (!matchingUser) {
+      return res.status(403).json({
+        error: 'This Google account is not registered as a Riiroow user.'
+      });
+    }
+
+    const user = toLegacyUser(matchingUser);
+    const { password: _password, ...safeUser } = user;
+
+    return res.json({
+      user: safeUser,
+      token: `demo-token-${safeUser.role}`,
+      permissions: safeUser.permissions,
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    return res.status(500).json({ error: 'Unable to complete Google login.' });
   }
 });
 

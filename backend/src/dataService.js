@@ -128,7 +128,7 @@ const summarizeTenantPayments = (payments) => {
   });
 };
 
-const toLegacyUser = (row = {}) => ({
+export const toLegacyUser = (row = {}) => ({
   id: row.id,
   name: row.name,
   email: row.email,
@@ -408,9 +408,29 @@ export const getTenantPayments = async (tenantId) => {
 
 export const createLease = async (payload = {}) => {
   const unitId = payload.unit_id ?? payload.unitId ?? null;
+  const tenantId = payload.tenant_id ?? payload.tenantId ?? null;
   const unitNumber = Number(payload.unit_number ?? payload.unitNumber);
 
-  const leases = await getLeases();
+  const leasePayload = {
+    tenant_id: tenantId,
+    unit_id: unitId,
+    unit_number: unitNumber,
+    start_date: payload.start_date ?? payload.startDate,
+    end_date: payload.end_date ?? payload.endDate,
+    monthly_rent: Number(payload.monthly_rent ?? payload.monthlyRent ?? 0),
+    security_deposit: Number(payload.security_deposit ?? payload.securityDeposit ?? 0),
+    status: payload.status ?? 'Active',
+    notes: payload.notes ?? '',
+  };
+
+  const usesLegacyIds =
+    (unitId && !validUuidPattern.test(String(unitId))) ||
+    (tenantId && !validUuidPattern.test(String(tenantId)));
+
+  const leases = usesLegacyIds
+    ? (loadData().leases || []).map(toLegacyLease).map(applyLeaseRuntimeStatus)
+    : await getLeases();
+
   const conflictingLease = leases.find((lease) => {
     const sameUnit =
       (unitId && String(lease.unitId ?? '') === String(unitId)) ||
@@ -426,18 +446,21 @@ export const createLease = async (payload = {}) => {
     );
   }
 
-  const result = await createEntity('leases', {
-    tenant_id: payload.tenant_id ?? payload.tenantId,
-    unit_id: unitId,
-    unit_number: unitNumber,
-    start_date: payload.start_date ?? payload.startDate,
-    end_date: payload.end_date ?? payload.endDate,
-    monthly_rent: Number(payload.monthly_rent ?? payload.monthlyRent ?? 0),
-    security_deposit: Number(payload.security_deposit ?? payload.securityDeposit ?? 0),
-    status: payload.status ?? 'Active',
-    notes: payload.notes ?? '',
-  });
+  if (usesLegacyIds) {
+    const state = loadData();
+    const next = {
+      id: crypto.randomUUID(),
+      ...leasePayload,
+    };
 
+    state.leases = state.leases || [];
+    state.leases.push(next);
+    saveData(state);
+
+    return toLegacyLease(next);
+  }
+
+  const result = await createEntity('leases', leasePayload);
   return toLegacyLease(result);
 };
 
@@ -454,11 +477,53 @@ export const updateLease = async (id, payload = {}) => {
     notes: payload.notes ?? '',
   };
 
+  if (!validUuidPattern.test(String(id))) {
+    const state = loadData();
+    const leases = state.leases || [];
+    const index = leases.findIndex((entry) => String(entry.id) === String(id));
+
+    if (index === -1) {
+      throw new Error('Record not found.');
+    }
+
+    leases[index] = {
+      ...leases[index],
+      ...updatePayload,
+    };
+
+    saveData(state);
+    return toLegacyLease(leases[index]);
+  }
+
   const result = await updateEntity('leases', id, updatePayload);
   return toLegacyLease(result);
 };
 
 export const terminateLease = async (id, note = '') => {
+  if (!validUuidPattern.test(String(id))) {
+    const state = loadData();
+    const leases = state.leases || [];
+    const index = leases.findIndex((entry) => String(entry.id) === String(id));
+
+    if (index === -1) {
+      throw new Error('Record not found.');
+    }
+
+    const existing = toLegacyLease(leases[index]);
+    const terminationNote = String(note || '').trim();
+    const existingNotes = String(existing.notes || '').trim();
+    const notes = [existingNotes, terminationNote].filter(Boolean).join(' ');
+
+    leases[index] = {
+      ...leases[index],
+      status: 'Terminated',
+      notes,
+    };
+
+    saveData(state);
+    return toLegacyLease(leases[index]);
+  }
+
   const existing = (await getLeases()).find((lease) => String(lease.id) === String(id));
 
   if (!existing) {
