@@ -464,20 +464,39 @@ const handleLogin = async (event) => {
       color: #222;
       max-width: 850px;
       margin: 0 auto;
-      padding: 25px;
-      line-height: 1.55;
-      font-size: 14px;
+      padding: 0;
+      line-height: 1.5;
+      font-size: 13px;
     }
 
     .header {
       text-align: center;
       border-bottom: 3px solid #222;
-      padding-bottom: 18px;
-      margin-bottom: 25px;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+    }
+
+    .brand-logo {
+      width: 180px;
+      height: 78px;
+      margin: 0 auto 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .brand-logo img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 180px;
+      max-height: 78px;
+      object-fit: contain;
     }
 
     .brand {
-      font-size: 30px;
+      font-size: 22px;
       font-weight: 800;
       letter-spacing: 1px;
       margin: 0;
@@ -558,6 +577,26 @@ const handleLogin = async (event) => {
     @media print {
       body {
         padding: 0;
+        margin: 0;
+        max-width: none;
+      }
+
+      .brand-logo {
+        width: 180px;
+        height: 78px;
+      }
+
+      .brand-logo img {
+        max-width: 180px;
+        max-height: 78px;
+      }
+
+      .header,
+      h2,
+      .details,
+      .notes,
+      .signatures {
+        break-inside: avoid;
       }
 
       .no-print {
