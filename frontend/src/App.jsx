@@ -8,7 +8,7 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
-const initialLogin = { email: 'admin@riiroow.com', password: 'admin123' };
+const initialLogin = { email: 'ibrazzmaj@mail.com', password: 'admin123' };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
