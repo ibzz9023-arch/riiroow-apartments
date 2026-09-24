@@ -285,8 +285,6 @@ const ensureSupabaseDataExists = async () => {
 export const getDashboard = async () => {
   if (supabase) {
     try {
-      await ensureSupabaseDataExists();
-
       const [unitsResult, tenantsResult, leasesResult, paymentsResult, maintenanceResult] = await Promise.all([
         supabase.from('units').select('*').order('unit_number', { ascending: true }),
         supabase.from('tenants').select('*').order('name', { ascending: true }),
