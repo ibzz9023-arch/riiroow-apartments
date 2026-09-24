@@ -420,6 +420,284 @@ const handleLogin = async (event) => {
     }
   };
 
+  const printPaymentReceipt = (payment) => {
+    const tenant = tenants.find(
+      (item) => String(item.id) === String(payment.tenantId)
+    );
+
+    const tenantName = tenant?.name || payment.tenantName || '—';
+    const tenantEmail = tenant?.email || '—';
+    const tenantPhone = tenant?.phone || '—';
+
+    const printWindow = window.open('', '_blank', 'width=800,height=900');
+
+    if (!printWindow) {
+      setError('Please allow pop-ups to print the payment receipt.');
+      return;
+    }
+
+    const safe = (value) =>
+      String(value ?? '—')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const amountDue = formatCurrency(payment.amount);
+    const amountPaid = formatCurrency(payment.paidAmount);
+    const remaining = formatCurrency(payment.remainingAmount);
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Riiroow Payment Receipt - ${safe(payment.id)}</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #fff;
+      color: #171717;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+    }
+
+    .receipt {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      border: 1px solid #d6d3d1;
+      padding: 34px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      border-bottom: 2px solid #171717;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      font-size: 27px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      margin: 0;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: #666;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .receipt-title {
+      text-align: right;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .receipt-id {
+      margin-top: 7px;
+      color: #666;
+      font-size: 11px;
+      word-break: break-all;
+    }
+
+    h2 {
+      font-size: 15px;
+      margin: 24px 0 12px;
+      padding-bottom: 7px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 28px;
+    }
+
+    .detail {
+      line-height: 1.5;
+    }
+
+    .label {
+      color: #666;
+      font-size: 11px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .amount-box {
+      margin-top: 18px;
+      border: 1px solid #d6d3d1;
+      padding: 18px;
+    }
+
+    .amount-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 8px 0;
+    }
+
+    .amount-row.total {
+      border-top: 2px solid #171717;
+      margin-top: 7px;
+      padding-top: 13px;
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .status {
+      font-weight: 700;
+    }
+
+    .notes {
+      background: #f7f7f6;
+      border: 1px solid #e5e5e5;
+      padding: 12px;
+      min-height: 45px;
+      white-space: pre-wrap;
+    }
+
+    .footer {
+      margin-top: 38px;
+      padding-top: 16px;
+      border-top: 1px solid #ccc;
+      text-align: center;
+      color: #666;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .signature {
+      margin-top: 48px;
+      width: 260px;
+      border-top: 1px solid #222;
+      padding-top: 8px;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+      }
+
+      .receipt {
+        max-width: none;
+        border: none;
+        padding: 0;
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="receipt">
+    <div class="header">
+      <div>
+        <div class="brand">RIIROOW APARTMENT</div>
+        <div class="subtitle">Apartment Management</div>
+      </div>
+      <div>
+        <div class="receipt-title">PAYMENT RECEIPT</div>
+        <div class="receipt-id">Receipt ID: ${safe(payment.id)}</div>
+      </div>
+    </div>
+
+    <h2>Tenant Information</h2>
+    <div class="details">
+      <div class="detail">
+        <span class="label">Tenant Name</span>
+        ${safe(tenantName)}
+      </div>
+      <div class="detail">
+        <span class="label">Unit</span>
+        ${safe(payment.unitNumber ? `Unit ${payment.unitNumber}` : '—')}
+      </div>
+      <div class="detail">
+        <span class="label">Phone</span>
+        ${safe(tenantPhone)}
+      </div>
+      <div class="detail">
+        <span class="label">Email</span>
+        ${safe(tenantEmail)}
+      </div>
+    </div>
+
+    <h2>Payment Information</h2>
+    <div class="details">
+      <div class="detail">
+        <span class="label">Due Date</span>
+        ${safe(payment.dueDate)}
+      </div>
+      <div class="detail">
+        <span class="label">Paid Date</span>
+        ${safe(payment.paidDate || '—')}
+      </div>
+      <div class="detail">
+        <span class="label">Payment Method</span>
+        ${safe(payment.method || '—')}
+      </div>
+      <div class="detail">
+        <span class="label">Status</span>
+        <span class="status">${safe(payment.status || '—')}</span>
+      </div>
+    </div>
+
+    <div class="amount-box">
+      <div class="amount-row">
+        <span>Amount Due</span>
+        <strong>${safe(amountDue)}</strong>
+      </div>
+      <div class="amount-row">
+        <span>Amount Paid</span>
+        <strong>${safe(amountPaid)}</strong>
+      </div>
+      <div class="amount-row total">
+        <span>Remaining Balance</span>
+        <strong>${safe(remaining)}</strong>
+      </div>
+    </div>
+
+    <h2>Notes</h2>
+    <div class="notes">${safe(payment.notes || 'No additional notes.')}</div>
+
+    <div class="signature">
+      <strong>Riiroow Apartment Management</strong><br />
+      Authorized Signature
+    </div>
+
+    <div class="footer">
+      Riiroow Apartment Management<br />
+      Payment receipt generated from the Riiroow property management system.
+    </div>
+  </div>
+</body>
+</html>`);
+
+    printWindow.document.close();
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+    }, 300);
+  };
+
   const printLease = (lease) => {
     const tenant = tenants.find(
       (item) => String(item.id) === String(lease.tenantId)
@@ -1916,6 +2194,7 @@ const handleLogin = async (event) => {
                               <td>{payment.paidDate || '—'}</td>
                               <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
                               <td className="action-cell">
+                                <button className="small-btn" onClick={() => printPaymentReceipt(payment)}>Print Receipt</button>
                                 <button className="small-btn" onClick={() => beginEditPayment(payment)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deletePayment(payment.id)}>Delete</button>
                               </td>

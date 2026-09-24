@@ -981,16 +981,3 @@ tbody tr:hover {
     max-width: calc(100vw - 24px);
   }
 }
-
-/* RIIROOW V1.1 — Payment Receipt */
-
-@media print {
-  body > * {
-    visibility: hidden;
-  }
-
-
-  
-
-@media (max-width: 640px) {
-  
