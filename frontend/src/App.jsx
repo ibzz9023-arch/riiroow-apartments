@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
+
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -72,6 +73,7 @@ const emptyMaintenanceForm = {
 };
 
 const getStatusClass = (status = '') => {
+    
   const value = String(status).trim().toLowerCase();
 
   if (!value) return 'neutral';
@@ -136,6 +138,37 @@ function EmptyState({ title, message }) {
 
 
 
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Riiroow React render error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
+          <h2>Riiroow encountered a display error</h2>
+          <p>{this.state.error?.message || 'Unknown React error'}</p>
+          <button onClick={() => window.location.reload()}>
+            Reload Riiroow
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function App() {
 const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
@@ -198,37 +231,8 @@ const [user, setUser] = useState(null);
     }
   }, [token]);
 
-  useEffect(() => {
-    const handleGoogleSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
 
-      if (error || !data?.session?.access_token) {
-        return;
-      }
-
-      try {
-        const result = await requestJson('/api/auth/google', {
-          method: 'POST',
-          body: {
-            accessToken: data.session.access_token,
-          },
-        });
-
-        setUser(result.user);
-        setToken(result.token);
-        setActiveTab('overview');
-        setError('');
-        setInfoMessage('');
-      } catch (err) {
-        setError(err.message || 'Unable to complete Google login.');
-        await supabase.auth.signOut();
-      }
-    };
-
-    handleGoogleSession();
-  }, []);
-
-  const handleGoogleLogin = async () => {
+const handleGoogleLogin = async () => {
   setError('');
   setInfoMessage('');
 
@@ -244,7 +248,7 @@ const [user, setUser] = useState(null);
       throw error;
     }
   } catch (err) {
-    setError(err.message || 'Unable to continue with Google.');
+    setError(err?.message || 'Unable to continue with Google.');
   }
 };
 
@@ -2518,4 +2522,12 @@ function StatCard({ label, value, detail, tone }) {
   );
 }
 
-export default App;
+function AppErrorBoundaryWrapped() {
+  return (
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  );
+}
+
+export default AppErrorBoundaryWrapped;
