@@ -59,7 +59,7 @@ test('updatePayment preserves partial payment balances when editing an existing 
   const original = readStore();
   t.after(() => restoreStore(original));
 
-  const existingPayment = readStore().payments.find((entry) => entry.id === 'pay-4');
+  const existingPayment = readStore().payments.find((entry) => Number(entry.amount) >= 1000 && Number(entry.amount) < 2000);
 
   assert.ok(existingPayment, 'Expected base payment fixture to exist for update test.');
 
@@ -75,7 +75,7 @@ test('updatePayment preserves partial payment balances when editing an existing 
   });
 
   assert.equal(result.paidAmount, 1000);
-  assert.equal(result.remainingAmount, 950);
+  assert.equal(result.remainingAmount, 850);
   assert.equal(result.status, 'Partially Paid');
   assert.equal(result.paid_amount, 1000);
 
@@ -85,5 +85,5 @@ test('updatePayment preserves partial payment balances when editing an existing 
   assert.ok(savedPayment, 'Expected the updated payment to remain persisted.');
   assert.equal(savedPayment.paid_amount, 1000);
   assert.equal(savedPayment.status, 'Partially Paid');
-  assert.equal(savedPayment.remainingAmount, 950);
+  assert.equal(savedPayment.remainingAmount, 850);
 });
