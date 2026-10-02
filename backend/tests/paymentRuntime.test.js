@@ -1,11 +1,24 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createPayment, updatePayment } from '../src/dataService.js';
+const tempDirectory = join(tmpdir(), `riiroow-payment-tests-${process.pid}-${Date.now()}`);
+const storeFilePath = join(tempDirectory, 'store.json');
+process.env.RIIROOW_DATA_FILE = storeFilePath;
+process.env.SUPABASE_URL = '';
+process.env.SUPABASE_ANON_KEY = '';
+process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 
-const storeFilePath = resolve(process.cwd(), 'backend/data/store.json');
+const { hasSupabase } = await import('../src/supabaseClient.js');
+assert.equal(hasSupabase, false, 'Runtime tests must not connect to Supabase.');
+
+const { seedState } = await import('../src/store.js');
+const { createPayment, updatePayment } = await import('../src/dataService.js');
+
+mkdirSync(tempDirectory, { recursive: true });
+writeFileSync(storeFilePath, JSON.stringify(seedState(), null, 2));
 
 const readStore = () => JSON.parse(readFileSync(storeFilePath, 'utf8'));
 

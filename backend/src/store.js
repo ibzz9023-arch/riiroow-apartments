@@ -5,7 +5,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dataFilePath = path.join(__dirname, '..', 'data', 'store.json');
+const dataFilePath = process.env.RIIROOW_DATA_FILE
+  ? path.resolve(process.env.RIIROOW_DATA_FILE)
+  : path.join(__dirname, '..', 'data', 'store.json');
 
 const hashPassword = (value) =>
   crypto.pbkdf2Sync(String(value ?? ''), 'riiroow-apartments-v1', 100000, 64, 'sha512').toString('hex');
@@ -117,43 +119,48 @@ export const seedState = () => {
     generateUnit(502, 5, 2, 2250),
   ];
 
+  // Synthetic demo records exercise Payments -> Export without using real tenant data.
   const tenants = [
-    { id: 'tenant-101', name: 'Alicia Gomez', unitNumber: 101, email: 'alicia@riiroow.com', phone: '(555) 111-0101', moveInDate: '2025-01-15', status: 'Active' },
-    { id: 'tenant-102', name: 'Marcus Hill', unitNumber: 102, email: 'marcus@riiroow.com', phone: '(555) 111-0102', moveInDate: '2025-02-01', status: 'Active' },
-    { id: 'tenant-201', name: 'Tara Nguyen', unitNumber: 201, email: 'tara@riiroow.com', phone: '(555) 111-0201', moveInDate: '2024-11-10', status: 'Active' },
-    { id: 'tenant-202', name: 'Daniel Brooks', unitNumber: 202, email: 'daniel@riiroow.com', phone: '(555) 111-0202', moveInDate: '2025-03-05', status: 'Active' },
-    { id: 'tenant-301', name: 'Priya Shah', unitNumber: 301, email: 'priya@riiroow.com', phone: '(555) 111-0301', moveInDate: '2024-08-22', status: 'Active' },
-    { id: 'tenant-302', name: 'Evan Foster', unitNumber: 302, email: 'evan@riiroow.com', phone: '(555) 111-0302', moveInDate: '2025-04-09', status: 'Active' },
-    { id: 'tenant-401', name: 'Monica Lee', unitNumber: 401, email: 'monica@riiroow.com', phone: '(555) 111-0401', moveInDate: '2024-12-17', status: 'Active' },
-    { id: 'tenant-402', name: 'Oscar Reed', unitNumber: 402, email: 'oscar@riiroow.com', phone: '(555) 111-0402', moveInDate: '2025-01-29', status: 'Active' },
-    { id: 'tenant-501', name: 'Julia Park', unitNumber: 501, email: 'julia@riiroow.com', phone: '(555) 111-0501', moveInDate: '2025-05-11', status: 'Active' },
-    { id: 'tenant-502', name: 'Samir Patel', unitNumber: 502, email: 'samir@riiroow.com', phone: '(555) 111-0502', moveInDate: '2024-10-03', status: 'Active' },
+    { id: 'tenant-101', name: 'Demo Tenant 101', unitNumber: 101, email: 'demo.tenant101@example.invalid', phone: '(555) 010-0101', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-102', name: 'Demo Tenant 102', unitNumber: 102, email: 'demo.tenant102@example.invalid', phone: '(555) 010-0102', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-201', name: 'Demo Tenant 201', unitNumber: 201, email: 'demo.tenant201@example.invalid', phone: '(555) 010-0201', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-202', name: 'Demo Tenant 202', unitNumber: 202, email: 'demo.tenant202@example.invalid', phone: '(555) 010-0202', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-301', name: 'Demo Tenant 301', unitNumber: 301, email: 'demo.tenant301@example.invalid', phone: '(555) 010-0301', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-302', name: 'Demo Tenant 302', unitNumber: 302, email: 'demo.tenant302@example.invalid', phone: '(555) 010-0302', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-401', name: 'Demo Tenant 401', unitNumber: 401, email: 'demo.tenant401@example.invalid', phone: '(555) 010-0401', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-402', name: 'Demo Tenant 402', unitNumber: 402, email: 'demo.tenant402@example.invalid', phone: '(555) 010-0402', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-501', name: 'Demo Tenant 501', unitNumber: 501, email: 'demo.tenant501@example.invalid', phone: '(555) 010-0501', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-502', name: 'Demo Tenant 502', unitNumber: 502, email: 'demo.tenant502@example.invalid', phone: '(555) 010-0502', moveInDate: '2026-01-01', status: 'Active' },
+    { id: 'tenant-demo-unleased', name: 'Demo Tenant Without Lease', unitNumber: null, email: 'demo.unleased@example.invalid', phone: '(555) 010-0999', moveInDate: '2026-04-01', status: 'Pending' },
   ];
 
   const leases = [
-    { id: 'lease-101', unitNumber: 101, tenantId: 'tenant-101', startDate: '2025-01-15', endDate: '2026-01-14', monthlyRent: 1850, status: 'Active' },
-    { id: 'lease-102', unitNumber: 102, tenantId: 'tenant-102', startDate: '2025-02-01', endDate: '2026-02-01', monthlyRent: 1500, status: 'Active' },
-    { id: 'lease-201', unitNumber: 201, tenantId: 'tenant-201', startDate: '2024-11-10', endDate: '2025-11-09', monthlyRent: 1900, status: 'Active' },
-    { id: 'lease-202', unitNumber: 202, tenantId: 'tenant-202', startDate: '2025-03-05', endDate: '2026-03-04', monthlyRent: 1950, status: 'Active' },
-    { id: 'lease-301', unitNumber: 301, tenantId: 'tenant-301', startDate: '2024-08-22', endDate: '2025-08-21', monthlyRent: 2000, status: 'Renewal due' },
-    { id: 'lease-302', unitNumber: 302, tenantId: 'tenant-302', startDate: '2025-04-09', endDate: '2026-04-08', monthlyRent: 1650, status: 'Active' },
-    { id: 'lease-401', unitNumber: 401, tenantId: 'tenant-401', startDate: '2024-12-17', endDate: '2025-12-16', monthlyRent: 2050, status: 'Active' },
-    { id: 'lease-402', unitNumber: 402, tenantId: 'tenant-402', startDate: '2025-01-29', endDate: '2026-01-28', monthlyRent: 2100, status: 'Active' },
-    { id: 'lease-501', unitNumber: 501, tenantId: 'tenant-501', startDate: '2025-05-11', endDate: '2026-05-10', monthlyRent: 2200, status: 'Active' },
-    { id: 'lease-502', unitNumber: 502, tenantId: 'tenant-502', startDate: '2024-10-03', endDate: '2025-10-02', monthlyRent: 2250, status: 'Active' },
+    { id: 'lease-101', unitNumber: 101, tenantId: 'tenant-101', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 1850, status: 'Active' },
+    { id: 'lease-102', unitNumber: 102, tenantId: 'tenant-102', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 1500, status: 'Active' },
+    { id: 'lease-201', unitNumber: 201, tenantId: 'tenant-201', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 1900, status: 'Active' },
+    { id: 'lease-202', unitNumber: 202, tenantId: 'tenant-202', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 1950, status: 'Active' },
+    { id: 'lease-301', unitNumber: 301, tenantId: 'tenant-301', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 2000, status: 'Active' },
+    { id: 'lease-302', unitNumber: 302, tenantId: 'tenant-302', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 1650, status: 'Active' },
+    { id: 'lease-401', unitNumber: 401, tenantId: 'tenant-401', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 2050, status: 'Active' },
+    { id: 'lease-402', unitNumber: 402, tenantId: 'tenant-402', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 2100, status: 'Active' },
+    { id: 'lease-501', unitNumber: 501, tenantId: 'tenant-501', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 2200, status: 'Active' },
+    { id: 'lease-502', unitNumber: 502, tenantId: 'tenant-502', startDate: '2026-01-01', endDate: '2026-12-31', monthlyRent: 2250, status: 'Active' },
   ];
 
   const payments = [
-    { id: 'pay-1', unitNumber: 101, tenantId: 'tenant-101', amount: 1850, dueDate: '2026-08-01', paidDate: '2026-08-02', status: 'Paid', method: 'ACH' },
-    { id: 'pay-2', unitNumber: 102, tenantId: 'tenant-102', amount: 1500, dueDate: '2026-08-01', paidDate: '2026-08-10', status: 'Paid', method: 'Card' },
-    { id: 'pay-3', unitNumber: 201, tenantId: 'tenant-201', amount: 1900, dueDate: '2026-08-01', paidDate: null, status: 'Overdue', method: 'ACH' },
-    { id: 'pay-4', unitNumber: 202, tenantId: 'tenant-202', amount: 1950, dueDate: '2026-08-01', paidDate: null, status: 'Outstanding', method: 'Bank transfer' },
-    { id: 'pay-5', unitNumber: 301, tenantId: 'tenant-301', amount: 2000, dueDate: '2026-08-01', paidDate: '2026-08-05', status: 'Paid', method: 'ACH' },
-    { id: 'pay-6', unitNumber: 302, tenantId: 'tenant-302', amount: 1650, dueDate: '2026-08-01', paidDate: null, status: 'Outstanding', method: 'Card' },
-    { id: 'pay-7', unitNumber: 401, tenantId: 'tenant-401', amount: 2050, dueDate: '2026-08-01', paidDate: '2026-08-01', status: 'Paid', method: 'ACH' },
-    { id: 'pay-8', unitNumber: 402, tenantId: 'tenant-402', amount: 2100, dueDate: '2026-08-01', paidDate: null, status: 'Overdue', method: 'Check' },
-    { id: 'pay-9', unitNumber: 501, tenantId: 'tenant-501', amount: 2200, dueDate: '2026-08-01', paidDate: '2026-08-04', status: 'Paid', method: 'ACH' },
-    { id: 'pay-10', unitNumber: 502, tenantId: 'tenant-502', amount: 2250, dueDate: '2026-08-01', paidDate: null, status: 'Outstanding', method: 'Card' },
+    { id: 'demo-pay-101-jan', unitNumber: 101, tenantId: 'tenant-101', amount: 1850, paidAmount: 1850, dueDate: '2026-01-01', paidDate: '2026-01-02', status: 'Paid', method: 'ACH', notes: 'Synthetic demo: paid in full.', reference: 'DEMO-101-2026-01' },
+    { id: 'demo-pay-101-feb', unitNumber: 101, tenantId: 'tenant-101', amount: 1850, paidAmount: 900, dueDate: '2026-02-01', paidDate: '2026-02-03', status: 'Partially Paid', method: 'Card', notes: 'Synthetic demo: partial payment; balance remains.', reference: 'DEMO-101-2026-02' },
+    { id: 'demo-pay-102-jan', unitNumber: 102, tenantId: 'tenant-102', amount: 1500, paidAmount: 1500, dueDate: '2026-01-01', paidDate: '2026-01-01', status: 'Paid', method: 'ACH', notes: 'Synthetic demo: paid in full.', reference: 'DEMO-102-2026-01' },
+    { id: 'demo-pay-102-feb', unitNumber: 102, tenantId: 'tenant-102', amount: 1500, paidAmount: 0, dueDate: '2026-02-01', paidDate: null, status: 'Overdue', method: 'ACH', notes: 'Synthetic demo: no payment received.', reference: 'DEMO-102-2026-02' },
+    { id: 'demo-pay-201-mar', unitNumber: 201, tenantId: 'tenant-201', amount: 1900, paidAmount: 1900, dueDate: '2026-03-01', paidDate: '2026-03-02', status: 'Paid', method: 'Check', notes: 'Synthetic demo: check cleared.', reference: 'DEMO-201-2026-03' },
+    { id: 'demo-pay-202-apr', unitNumber: 202, tenantId: 'tenant-202', amount: 1950, paidAmount: 950, dueDate: '2026-04-01', paidDate: '2026-04-04', status: 'Partially Paid', method: 'Bank transfer', notes: 'Synthetic demo: partial bank transfer.', reference: 'DEMO-202-2026-04' },
+    { id: 'demo-pay-301-may', unitNumber: 301, tenantId: 'tenant-301', amount: 2000, paidAmount: 0, dueDate: '2026-05-01', paidDate: null, status: 'Overdue', method: 'ACH', notes: 'Synthetic demo: missed rent period.', reference: 'DEMO-301-2026-05' },
+    { id: 'demo-pay-302-jun', unitNumber: 302, tenantId: 'tenant-302', amount: 1650, paidAmount: 1650, dueDate: '2026-06-01', paidDate: '2026-06-01', status: 'Paid', method: 'Cash', notes: 'Synthetic demo: paid in full.', reference: 'DEMO-302-2026-06' },
+    { id: 'demo-pay-401-jul', unitNumber: 401, tenantId: 'tenant-401', amount: 2050, paidAmount: 2050, dueDate: '2026-07-01', paidDate: '2026-07-05', status: 'Paid', method: 'ACH', notes: 'Synthetic demo: paid after due date.', reference: 'DEMO-401-2026-07' },
+    { id: 'demo-pay-402-aug', unitNumber: 402, tenantId: 'tenant-402', amount: 2100, paidAmount: 1050, dueDate: '2026-08-01', paidDate: '2026-08-03', status: 'Partially Paid', method: 'Card', notes: 'Synthetic demo: half payment received.', reference: 'DEMO-402-2026-08' },
+    { id: 'demo-pay-501-sep', unitNumber: 501, tenantId: 'tenant-501', amount: 2200, paidAmount: 0, dueDate: '2026-09-01', paidDate: null, status: 'Overdue', method: 'Bank transfer', notes: 'Synthetic demo: no payment received.', reference: 'DEMO-501-2026-09' },
+    { id: 'demo-pay-502-oct', unitNumber: 502, tenantId: 'tenant-502', amount: 2250, paidAmount: 0, dueDate: '2026-10-01', paidDate: null, status: 'Outstanding', method: 'Check', notes: 'Synthetic demo: October rent unpaid.', reference: 'DEMO-502-2026-10' },
+    { id: 'demo-pay-501-prior-lease', unitNumber: 501, tenantId: 'tenant-501', amount: 2200, paidAmount: 2200, dueDate: '2025-12-01', paidDate: '2025-12-02', status: 'Paid', method: 'ACH', notes: 'Synthetic demo: paid before current lease period.', reference: 'DEMO-501-2025-12' },
   ];
 
   const maintenance = [

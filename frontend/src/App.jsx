@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
+import { supabase, hasSupabase } from './supabaseClient';
 
 
 const formatCurrency = (value) =>
@@ -223,6 +223,58 @@ const [user, setUser] = useState(null);
     }
   };
 
+  const exportReportsToExcel = async () => {
+    if (!dashboard) return;
+
+    setError('');
+    setInfoMessage('');
+
+    try {
+      const { createReportWorkbook } = await import('./reportExport.js');
+      const workbook = await createReportWorkbook(dashboard);
+      const blob = new Blob([workbook], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `riiroow-report-${todayIso()}.xlsx`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setInfoMessage('Excel report downloaded.');
+    } catch {
+      setError('Unable to export the report. Please try again.');
+    }
+  };
+
+  const exportPaymentsToExcel = async () => {
+    if (!dashboard) return;
+
+    setError('');
+    setInfoMessage('');
+
+    try {
+      const { createPaymentLedgerWorkbook } = await import('./reportExport.js');
+      const workbook = await createPaymentLedgerWorkbook(dashboard);
+      const blob = new Blob([workbook], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `riiroow-payment-ledger-${todayIso()}.xlsx`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setInfoMessage('Payment ledger downloaded.');
+    } catch {
+      setError('Unable to export the payment ledger. Please try again.');
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchDashboard();
@@ -232,25 +284,6 @@ const [user, setUser] = useState(null);
   }, [token]);
 
 
-const handleGoogleLogin = async () => {
-  setError('');
-  setInfoMessage('');
-
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
-      },
-    });
-
-    if (error) {
-      throw error;
-    }
-  } catch (err) {
-    setError(err?.message || 'Unable to continue with Google.');
-  }
-};
 
 const handleLogin = async (event) => {
     event.preventDefault();
@@ -897,7 +930,7 @@ const handleLogin = async (event) => {
       <img src="${window.location.origin}${import.meta.env.BASE_URL}riiroow-logo.png" alt="Riiroow Apartments">
     </div>
     <h1 class="brand">RIIROOW APARTMENT</h1>
-    <div class="subtitle">RESIDENTIAL LEASE AGREEMENT</div>
+    <div class="subtitle">LEASE SUMMARY</div>
     <div class="lease-id">Lease ID: ${safe(lease.id)}</div>
   </div>
 
@@ -944,41 +977,7 @@ const handleLogin = async (event) => {
     </div>
   </div>
 
-  <h2>4. Lease Terms and Responsibilities</h2>
-
-  <div class="clause">
-    <strong>Rent:</strong>
-    The tenant agrees to pay the monthly rent stated in this agreement
-    according to the payment terms established by Riiroow Apartment Management.
-  </div>
-
-  <div class="clause">
-    <strong>Use of Property:</strong>
-    The tenant agrees to use the assigned apartment unit responsibly,
-    maintain reasonable cleanliness, and comply with applicable property rules.
-  </div>
-
-  <div class="clause">
-    <strong>Maintenance:</strong>
-    The tenant should promptly report maintenance problems or damage to
-    Riiroow Apartment Management. Tenants are responsible for damage caused
-    by misuse or negligence, subject to applicable agreements and rules.
-  </div>
-
-  <div class="clause">
-    <strong>Termination:</strong>
-    This lease may be terminated according to the agreed lease terms,
-    applicable property rules, and applicable law.
-  </div>
-
-  <div class="clause">
-    <strong>Agreement:</strong>
-    By signing below, both parties acknowledge that they have reviewed the
-    information contained in this lease agreement and agree to the applicable
-    terms and responsibilities.
-  </div>
-
-  <h2>5. Additional Notes</h2>
+  <h2>4. Additional Notes</h2>
   <div class="notes">${safe(lease.notes || 'No additional notes.')}</div>
 
   <div class="signatures">
@@ -1248,10 +1247,7 @@ const handleLogin = async (event) => {
             </label>
             {error ? <p className="error-text" role="alert">{error}</p> : null}
             <button type="submit" className="primary-btn">Sign in to dashboard</button>
-  <button type="button" className="ghost-btn" onClick={handleGoogleLogin}>
-    Continue with Google
-  </button>
-          </form>
+</form>
 
         </div>
       </div>
@@ -2171,6 +2167,9 @@ const handleLogin = async (event) => {
                 <section className="panel">
                   <div className="panel-header">
                     <h3>Payment history</h3>
+                    <button className="secondary-btn" type="button" onClick={exportPaymentsToExcel} disabled={!dashboard}>
+                      Export to Excel
+                    </button>
                   </div>
                   <div className="table-wrap">
                     {payments.length ? (
@@ -2429,6 +2428,9 @@ const handleLogin = async (event) => {
                       <p className="eyebrow">Reports & Analytics</p>
                       <h2>Property performance</h2>
                     </div>
+                    <button className="secondary-btn" type="button" onClick={exportReportsToExcel} disabled={!dashboard}>
+                      Export to Excel
+                    </button>
                   </div>
 
                   <div className="stats-grid">

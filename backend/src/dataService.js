@@ -3,7 +3,7 @@ import { supabase, hasSupabase } from './supabaseClient.js';
 import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord } from './store.js';
 
 const propertyName = 'Riiroow Apartments';
-const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const normalizeRoleValue = (value) => String(value || '').trim();
 const assignmentError = (message) => Object.assign(new Error(message), { code: 'TENANT_ASSIGNMENT_VALIDATION' });
 const hashPassword = (value) =>
@@ -1108,3 +1108,4 @@ export const deleteEntity = async (entityName, id) => {
   saveData(state);
   return true;
 };
+
