@@ -5,6 +5,12 @@ import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStat
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const normalizeRoleValue = (value) => String(value || '').trim();
+const normalizeTenantName = (value) =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 const assignmentError = (message) => Object.assign(new Error(message), { code: 'TENANT_ASSIGNMENT_VALIDATION' });
 const hashPassword = (value) =>
   crypto.pbkdf2Sync(String(value ?? ''), 'riiroow-apartments-v1', 100000, 64, 'sha512').toString('hex');
@@ -718,6 +724,7 @@ const assertSupabaseUnitAvailable = async (propertyId, unit, tenantId) => {
 };
 
 export const createTenant = async (payload) => {
+  payload = { ...payload, name: normalizeTenantName(payload.name) };
   if (supabase) {
     try {
       const propertyId = await ensureProperty();
@@ -766,6 +773,7 @@ export const createTenant = async (payload) => {
 };
 
 export const updateTenant = async (id, payload) => {
+  payload = { ...payload, name: normalizeTenantName(payload.name) };
   if (supabase) {
     try {
       const propertyId = await ensureProperty();
