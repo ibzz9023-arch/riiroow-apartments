@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS ? '/riiroow-apartments/' : '/',
+  base: process.env.RAILWAY_ENVIRONMENT ? '/' : (process.env.GITHUB_ACTIONS ? '/riiroow-apartments/' : '/'),
   plugins: [react()],
   server: {
     port: 3000,
