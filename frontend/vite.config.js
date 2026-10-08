@@ -8,10 +8,10 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
-    https: {
+    https: process.env.NODE_ENV === 'development' ? {
       key: fs.readFileSync('./192.168.100.96+2-key.pem'),
       cert: fs.readFileSync('./192.168.100.96+2.pem'),
-    },
+    } : undefined,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
@@ -20,3 +20,4 @@ export default defineConfig({
     },
   },
 });
+
