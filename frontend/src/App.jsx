@@ -715,6 +715,7 @@ const handleLogin = async (event) => {
     <div class="notes">${safe(payment.notes || 'No additional notes.')}</div>
 
     <div class="signature">
+      <img src="${window.location.origin}${import.meta.env.BASE_URL}signature.png" alt="Authorized signature" style="display:block;width:220px;max-width:100%;height:70px;object-fit:contain;object-position:left center;margin:0 0 4px;">
       <strong>Riiroow Apartment Management</strong><br />
       Authorized Signature
     </div>
