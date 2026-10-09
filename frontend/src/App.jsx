@@ -869,14 +869,29 @@ const handleLogin = async (event) => {
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 60px;
-      margin-top: 75px;
+      gap: 30px;
+      margin-top: 55px;
+      align-items: end;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .signature {
       border-top: 1px solid #222;
       padding-top: 8px;
-      min-height: 70px;
+      min-height: 100px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .lease-signature-image {
+      display: block;
+      width: 260px;
+      max-width: 100%;
+      height: 85px;
+      object-fit: contain;
+      object-position: left center;
+      margin: -8px 0 0;
     }
 
     .footer {
@@ -987,9 +1002,9 @@ const handleLogin = async (event) => {
       Date: ____________________
     </div>
 
-    <div class="signature">
-      <strong>Riiroow Apartment Management</strong><br><br>
-      Authorized Signature: ____________________<br>
+    <div class="signature authorized-signature">
+      <strong>Riiroow Apartment Management</strong><br>
+      <img class="lease-signature-image" src="${window.location.origin}${import.meta.env.BASE_URL}signature.png" alt="Authorized signature">
       Date: ____________________
     </div>
   </div>
