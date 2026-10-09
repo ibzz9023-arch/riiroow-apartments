@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import argon2 from 'argon2';
 import { supabase, hasSupabase } from './supabaseClient.js';
 import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord } from './store.js';
 
@@ -14,12 +15,20 @@ const normalizeTenantName = (value) =>
 const assignmentError = (message) => Object.assign(new Error(message), { code: 'TENANT_ASSIGNMENT_VALIDATION' });
 const hashPassword = (value) =>
   crypto.pbkdf2Sync(String(value ?? ''), 'riiroow-apartments-v1', 100000, 64, 'sha512').toString('hex');
-const passwordMatches = (storedPassword, candidatePassword) => {
+const passwordMatches = async (storedPassword, candidatePassword) => {
   const stored = String(storedPassword ?? '');
   const candidate = String(candidatePassword ?? '');
 
   if (!stored || !candidate) {
     return false;
+  }
+
+  if (stored.startsWith('$argon2')) {
+    try {
+      return await argon2.verify(stored, candidate);
+    } catch {
+      return false;
+    }
   }
 
   return stored === candidate || stored === hashPassword(candidate) || hashPassword(stored) === hashPassword(candidate);
@@ -639,7 +648,14 @@ export const loginUser = async ({ email, password }) => {
 
       if (error) throw error;
 
-      const matchingUser = (data || []).find((entry) => passwordMatches(entry.password, password));
+      let matchingUser = null;
+      for (const entry of data || []) {
+        if (await passwordMatches(entry.password, password)) {
+          matchingUser = entry;
+          break;
+        }
+      }
+
       if (!matchingUser) {
         return null;
       }
@@ -657,9 +673,16 @@ export const loginUser = async ({ email, password }) => {
   }
 
   const state = loadData();
-  const user = state.users.find(
-    (entry) => entry.email.toLowerCase() === String(email || '').toLowerCase() && passwordMatches(entry.password, password)
-  );
+  let user = null;
+  for (const entry of state.users) {
+    if (
+      entry.email.toLowerCase() === String(email || '').toLowerCase()
+      && await passwordMatches(entry.password, password)
+    ) {
+      user = entry;
+      break;
+    }
+  }
 
   if (!user) {
     return null;
