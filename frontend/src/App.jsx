@@ -1003,8 +1003,8 @@ const handleLogin = async (event) => {
     </div>
 
     <div class="signature authorized-signature">
-      <strong>Riiroow Apartment Management</strong><br>
       <img class="lease-signature-image" src="${window.location.origin}${import.meta.env.BASE_URL}signature.png" alt="Authorized signature">
+      <strong>Riiroow Apartment Management</strong><br>
       Date: ____________________
     </div>
   </div>
