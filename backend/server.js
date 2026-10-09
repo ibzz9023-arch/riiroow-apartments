@@ -465,6 +465,11 @@ app.delete('/api/units/:id', requireRoles('Admin'), async (req, res) => {
   }
 });
 
+app.get(['/signature.png', '/riiroow-apartments/signature.png'], (req, res, next) => {
+  res.sendFile(path.resolve(__dirname, '../frontend/public/signature.png'), (error) => {
+    if (error) next(error);
+  });
+});
 app.use(express.static(frontendDist));
 
 app.get('*', (req, res, next) => {
