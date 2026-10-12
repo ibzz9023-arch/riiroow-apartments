@@ -9,6 +9,17 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const formatDateTime = (value) => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+};
 const initialLogin = { email: 'admin@riiroow.com', password: 'admin123' };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
