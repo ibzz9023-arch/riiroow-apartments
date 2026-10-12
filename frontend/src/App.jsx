@@ -188,6 +188,7 @@ const [user, setUser] = useState(null);
   const [leaseForm, setLeaseForm] = useState(emptyLeaseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
+  const [depositOverview, setDepositOverview] = useState({ agreedDeposit: 0, depositReceived: 0, outstandingDeposit: 0, availableDeposit: 0, transactions: [], loaded: false });
 
   const requestJson = async (path, options = {}) => {
     const { method = 'GET', body, headers = {} } = options;
