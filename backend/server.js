@@ -266,6 +266,39 @@ app.delete('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res
   }
 });
 
+app.get('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+  try {
+    const { getSecurityDepositSummary } = await import('./src/dataService.js');
+    const summary = await getSecurityDepositSummary(req.params.id);
+    res.json(summary);
+  } catch (error) {
+    const status = error.code === 'NOT_FOUND' ? 404 : 500;
+    if (status === 500) console.error('Get security deposit summary error:', error.message || error);
+    res.status(status).json({ error: status === 404 ? 'Lease not found.' : 'Unable to load security deposit records. Confirm the database migration has been applied.' });
+  }
+});
+
+app.post('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const { recordSecurityDepositTransaction } = await import('./src/dataService.js');
+    const authPayload = authHeaderToPayload(req);
+    const transaction = await recordSecurityDepositTransaction(
+      req.params.id,
+      req.body || {},
+      authPayload?.sub || null
+    );
+    res.status(201).json(transaction);
+  } catch (error) {
+    const status = error.code === 'NOT_FOUND' ? 404 :
+      error.code === 'DEPOSIT_VALIDATION' ? 400 : 500;
+    if (status === 500) console.error('Record security deposit transaction error:', error.message || error);
+    res.status(status).json({
+      error: status === 404 ? 'Lease not found.' :
+        status === 400 ? error.message :
+        'Unable to record the security deposit transaction. Confirm the database migration has been applied.'
+    });
+  }
+});
 app.post('/api/leases', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     const item = await createLease({
