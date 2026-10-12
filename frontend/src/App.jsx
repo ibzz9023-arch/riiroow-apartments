@@ -189,6 +189,15 @@ const [user, setUser] = useState(null);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
   const [depositOverview, setDepositOverview] = useState({ agreedDeposit: 0, depositReceived: 0, outstandingDeposit: 0, availableDeposit: 0, transactions: [], loaded: false });
+  const [selectedDepositLeaseId, setSelectedDepositLeaseId] = useState('');
+  const [depositSummary, setDepositSummary] = useState(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositForm, setDepositForm] = useState({
+    type: 'payment',
+    amount: '',
+    transactionDate: todayIso(),
+    notes: '',
+  });
 
   const requestJson = async (path, options = {}) => {
     const { method = 'GET', body, headers = {} } = options;
@@ -211,6 +220,79 @@ const [user, setUser] = useState(null);
     return data;
   };
 
+  const loadSecurityDeposit = async (leaseId) => {
+    if (!leaseId) {
+      setDepositSummary(null);
+      return;
+    }
+
+    setDepositLoading(true);
+    setError('');
+
+    try {
+      const summary = await requestJson(
+        `/api/leases/${encodeURIComponent(leaseId)}/security-deposits`
+      );
+      setDepositSummary(summary);
+    } catch (err) {
+      setError(err.message || 'Unable to load security-deposit records.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
+  const handleDepositSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!selectedDepositLeaseId) {
+      setError('Please select a lease first.');
+      return;
+    }
+
+    const amount = Number(depositForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+
+    setDepositLoading(true);
+    setError('');
+    setInfoMessage('');
+
+    try {
+      await requestJson(
+        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`,
+        {
+          method: 'POST',
+          body: {
+            type: depositForm.type,
+            amount,
+            transactionDate: depositForm.transactionDate,
+            notes: depositForm.notes,
+          },
+        }
+      );
+
+      const summary = await requestJson(
+        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`
+      );
+      setDepositSummary(summary);
+      setDepositForm({
+        type: 'payment',
+        amount: '',
+        transactionDate: todayIso(),
+        notes: '',
+      });
+      setInfoMessage('Security-deposit transaction recorded successfully.');
+
+      // Refresh dashboard totals without changing existing records.
+      await fetchDashboard();
+    } catch (err) {
+      setError(err.message || 'Unable to record the security-deposit transaction.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
   const fetchDashboard = async () => {
     try {
       setLoading(true);
