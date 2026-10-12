@@ -1117,3 +1117,190 @@ export const deleteEntity = async (entityName, id) => {
   return true;
 };
 
+
+
+
+
+
+// Security deposit accounting. Deposit transactions never use the rent payments table.
+const normalizeDepositMoney = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw Object.assign(new Error('Amount must be a valid non-negative number.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+};
+
+const summarizeSecurityDeposit = (lease, transactions) => {
+  const agreedDeposit = normalizeDepositMoney(
+    lease.security_deposit ?? lease.securityDeposit ?? 0
+  );
+
+  const depositReceived = transactions
+    .filter((item) => item.transaction_type === 'payment')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const totalDeductions = transactions
+    .filter((item) => item.transaction_type === 'deduction')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const totalRefunded = transactions
+    .filter((item) => item.transaction_type === 'refund')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  return {
+    leaseId: lease.id,
+    agreedDeposit,
+    depositReceived: Math.round(depositReceived * 100) / 100,
+    outstandingDeposit: Math.round(Math.max(0, agreedDeposit - depositReceived) * 100) / 100,
+    totalDeductions: Math.round(totalDeductions * 100) / 100,
+    totalRefunded: Math.round(totalRefunded * 100) / 100,
+    availableDeposit: Math.round((depositReceived - totalDeductions - totalRefunded) * 100) / 100,
+    transactions,
+  };
+};
+
+export const getSecurityDepositSummary = async (leaseId) => {
+  if (supabase) {
+    const { data: lease, error: leaseError } = await supabase
+      .from('leases')
+      .select('id, security_deposit')
+      .eq('id', leaseId)
+      .maybeSingle();
+
+    if (leaseError) throw leaseError;
+    if (!lease) {
+      throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+    }
+
+    const { data: transactions, error: transactionError } = await supabase
+      .from('security_deposit_transactions')
+      .select('*')
+      .eq('lease_id', leaseId)
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (transactionError) throw transactionError;
+
+    return summarizeSecurityDeposit(lease, transactions || []);
+  }
+
+  const state = loadData();
+  const lease = (state.leases || []).find(
+    (item) => String(item.id) === String(leaseId)
+  );
+
+  if (!lease) {
+    throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+  }
+
+  const transactions = (state.securityDepositTransactions || [])
+    .filter((item) => String(item.lease_id) === String(leaseId))
+    .sort((a, b) => String(b.transaction_date).localeCompare(String(a.transaction_date)));
+
+  return summarizeSecurityDeposit(lease, transactions);
+};
+
+export const recordSecurityDepositTransaction = async (leaseId, payload = {}, recordedBy = null) => {
+  const type = String(payload.transactionType ?? payload.transaction_type ?? '').trim().toLowerCase();
+
+  if (!['payment', 'deduction', 'refund'].includes(type)) {
+    throw Object.assign(new Error('Transaction type must be payment, deduction, or refund.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  const amount = Number(payload.amount);
+  const roundedAmount = Math.round((amount + Number.EPSILON) * 100) / 100;
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    amount > 1000000000 ||
+    amount !== roundedAmount
+  ) {
+    throw Object.assign(
+      new Error('Enter a valid transaction amount with no more than two decimal places.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+  if (roundedAmount <= 0) {
+    throw Object.assign(new Error('Transaction amount must be at least 0.01.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  const notes = String(payload.notes ?? '').trim();
+  if (notes.length > 1000) {
+    throw Object.assign(new Error('Notes cannot exceed 1000 characters.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  const dateInput = payload.transactionDate ?? payload.transaction_date ?? new Date().toISOString();
+  const transactionDate = new Date(dateInput);
+
+  if (!dateInput || Number.isNaN(transactionDate.getTime())) {
+    throw Object.assign(new Error('Enter a valid transaction date.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  if (supabase) {
+    // Do not fall back to local storage on a financial database error.
+    // The SQL function locks the lease and validates the balance atomically.
+    const { data, error } = await supabase.rpc('record_security_deposit_transaction', {
+      p_lease_id: leaseId,
+      p_transaction_type: type,
+      p_amount: roundedAmount,
+      p_transaction_date: transactionDate.toISOString(),
+      p_notes: notes,
+      p_recorded_by: recordedBy ? String(recordedBy).slice(0, 200) : null,
+    });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (/lease not found/i.test(message)) {
+        throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+      }
+      if (/invalid|exceeds|must be positive|transaction type/i.test(message)) {
+        throw Object.assign(new Error(message), { code: 'DEPOSIT_VALIDATION' });
+      }
+      throw error;
+    }
+
+    return data;
+  }
+
+  // Local fallback is supported for development. It does not provide
+  // cross-process database locking and must not be used for concurrent production accounting.
+  const state = loadData();
+  const lease = (state.leases || []).find(
+    (item) => String(item.id) === String(leaseId)
+  );
+
+  if (!lease) {
+    throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+  }
+
+  const transactions = state.securityDepositTransactions || [];
+  const summary = summarizeSecurityDeposit(
+    lease,
+    transactions.filter((item) => String(item.lease_id) === String(leaseId))
+  );
+
+  if (type === 'payment' && summary.depositReceived + roundedAmount > summary.agreedDeposit) {
+    throw Object.assign(new Error('Payment exceeds the remaining agreed deposit.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  if (['deduction', 'refund'].includes(type) && roundedAmount > summary.availableDeposit) {
+    throw Object.assign(new Error('Transaction exceeds the available deposit.'), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  const transaction = {
+    id: crypto.randomUUID(),
+    lease_id: leaseId,
+    transaction_type: type,
+    amount: roundedAmount,
+    transaction_date: transactionDate.toISOString(),
+    notes,
+    recorded_by: recordedBy ? String(recordedBy).slice(0, 200) : null,
+    created_at: new Date().toISOString(),
+  };
+
+  state.securityDepositTransactions = [...transactions, transaction];
+  saveData(state);
+  return transaction;
+};

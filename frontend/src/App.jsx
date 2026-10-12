@@ -216,6 +216,48 @@ const [user, setUser] = useState(null);
       setError('');
       const data = await requestJson('/api/dashboard');
       setDashboard(data);
+
+      const leaseList = Array.isArray(data?.leases) ? data.leases : [];
+      const depositResults = await Promise.all(
+        leaseList.filter((lease) => lease?.id).map(async (lease) => {
+          try {
+            const summary = await requestJson(
+              `/api/leases/${encodeURIComponent(lease.id)}/security-deposits`
+            );
+            return { lease, summary };
+          } catch (depositError) {
+            console.error(
+              `Unable to load security deposit summary for lease ${lease.id}:`,
+              depositError.message
+            );
+            return null;
+          }
+        })
+      );
+
+      const validDeposits = depositResults.filter(Boolean);
+      const depositTotal = (field) => validDeposits.reduce(
+        (total, item) => total + (Number(item.summary?.[field]) || 0),
+        0
+      );
+
+      const depositTransactions = validDeposits.flatMap(({ lease, summary }) =>
+        (Array.isArray(summary.transactions) ? summary.transactions : []).map((transaction) => ({
+          ...transaction,
+          leaseId: lease.id,
+          unitNumber: lease.unitNumber ?? lease.unit_number ?? '',
+          tenantName: lease.tenantName ?? lease.tenant_name ?? '',
+        }))
+      );
+
+      setDepositOverview({
+        agreedDeposit: depositTotal('agreedDeposit'),
+        depositReceived: depositTotal('depositReceived'),
+        outstandingDeposit: depositTotal('outstandingDeposit'),
+        availableDeposit: depositTotal('availableDeposit'),
+        transactions: depositTransactions,
+        loaded: true,
+      });      setDashboard(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1267,13 +1309,14 @@ const handleLogin = async (event) => {
     ['units', 'Units'],
     ['tenants', 'Tenants'],
     ['leases', 'Leases'],
+    ['deposits', 'Security Deposits'],
     ['payments', 'Payments'],
     ['maintenance', 'Maintenance'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'payments', 'reports'].includes(key);
-    if (role === 'accountant') return ['overview', 'payments', 'leases', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'reports'].includes(key);
+    if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return true;
   });
@@ -1416,6 +1459,34 @@ const handleLogin = async (event) => {
                   <StatCard label="Monthly Rent" value={formatCurrency(stats.totalMonthlyRent)} detail="Gross scheduled rent" tone="green" />
                   <StatCard label="Outstanding" value={formatCurrency(stats.overduePayments)} detail="Due or overdue balances" tone="amber" />
                   <StatCard label="Open Maintenance" value={String(stats.openMaintenance ?? 0)} detail="Active service requests" tone="red" />
+
+                </section>
+
+                <section className="stats-grid">
+                  <StatCard
+                    label="Security Deposits Agreed"
+                    value={depositOverview.loaded ? formatCurrency(depositOverview.agreedDeposit) : 'Loading...'}
+                    detail="Total required under recorded leases"
+                    tone="blue"
+                  />
+                  <StatCard
+                    label="Security Deposits Received"
+                    value={depositOverview.loaded ? formatCurrency(depositOverview.depositReceived) : 'Loading...'}
+                    detail="Recorded deposit payments only"
+                    tone="green"
+                  />
+                  <StatCard
+                    label="Outstanding Deposits"
+                    value={depositOverview.loaded ? formatCurrency(depositOverview.outstandingDeposit) : 'Loading...'}
+                    detail="Agreed deposits not yet received"
+                    tone="amber"
+                  />
+                  <StatCard
+                    label="Available Deposits"
+                    value={depositOverview.loaded ? formatCurrency(depositOverview.availableDeposit) : 'Loading...'}
+                    detail="Received deposits less deductions and refunds"
+                    tone="red"
+                  />
                 </section>
 
                 <section className="panel-grid two-col">
@@ -1710,7 +1781,7 @@ const handleLogin = async (event) => {
                               <th>Amount Paid</th>
                               <th>Remaining</th>
                               <th>Due date</th>
-                              <th>Paid date</th>
+                              <th>Paid date</th><th>Recorded</th>
                               <th>Status</th>
                               <th>Method</th>
                               <th>Unit</th>
@@ -1723,12 +1794,12 @@ const handleLogin = async (event) => {
                                 <td>{formatCurrency(payment.amount)}</td>
                                 <td>{formatCurrency(payment.paidAmount)}</td>
                                 <td>{formatCurrency(payment.remainingAmount)}</td>
-                                <td>{payment.dueDate || '—'}</td>
-                                <td>{payment.paidDate || '—'}</td>
+                                <td>{payment.dueDate || 'Ã¯Â¿Â½'}</td>
+                                <td>{payment.paidDate || 'Ã¯Â¿Â½'}</td><td>{formatDateTime(payment.createdAt)}</td>
                                 <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
-                                <td>{payment.method || '—'}</td>
-                                <td>{payment.unitNumber || '—'}</td>
-                                <td>{payment.notes || '—'}</td>
+                                <td>{payment.method || 'Ã¯Â¿Â½'}</td>
+                                <td>{payment.unitNumber || 'Ã¯Â¿Â½'}</td>
+                                <td>{payment.notes || 'Ã¯Â¿Â½'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -2080,7 +2151,212 @@ const handleLogin = async (event) => {
               </div>
             ) : null}
 
-            {activeTab === 'payments' ? (
+            {activeTab === 'deposits' ? (
+        <div className="stacked-sections">
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Security Deposits</h2>
+                <p>Manage agreed deposits separately from monthly rent.</p>
+              </div>
+            </div>
+
+            <div className="crud-form">
+              <div className="form-grid">
+                <label>
+                  Lease
+                  <select
+                    value={selectedDepositLeaseId}
+                    onChange={(event) => {
+                      setSelectedDepositLeaseId(event.target.value);
+                      setDepositSummary(null);
+                    }}
+                  >
+                    <option value="">Select a lease</option>
+                    {(dashboard?.leases || []).map((lease) => (
+                      <option key={lease.id} value={lease.id}>
+                        {`Unit ${lease.unit_number ?? lease.unitNumber ?? lease.unit_id ?? 'â€”'} â€” ${lease.tenant_name ?? lease.tenantName ?? lease.tenant_id ?? 'Tenant'} `}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="small-btn"
+                  disabled={!selectedDepositLeaseId || depositLoading}
+                  onClick={() => loadSecurityDeposit(selectedDepositLeaseId)}
+                >
+                  {depositLoading ? 'Loading...' : 'Load Deposit Records'}
+                </button>
+              </div>
+            </div>
+
+            {depositSummary && (
+              <>
+                <div className="form-grid">
+                  <div>
+                    <strong>Agreed deposit</strong>
+                    <p>{formatCurrency(depositSummary.agreedDeposit)}</p>
+                  </div>
+                  <div>
+                    <strong>Deposit received</strong>
+                    <p>{formatCurrency(depositSummary.depositReceived)}</p>
+                  </div>
+                  <div>
+                    <strong>Outstanding deposit</strong>
+                    <p>{formatCurrency(depositSummary.outstandingDeposit)}</p>
+                  </div>
+                  <div>
+                    <strong>Total deductions</strong>
+                    <p>{formatCurrency(depositSummary.totalDeductions)}</p>
+                  </div>
+                  <div>
+                    <strong>Total refunded</strong>
+                    <p>{formatCurrency(depositSummary.totalRefunded)}</p>
+                  </div>
+                  <div>
+                    <strong>Available deposit</strong>
+                    <p>{formatCurrency(depositSummary.availableDeposit)}</p>
+                  </div>
+                </div>
+
+                {(role === 'admin' || role === 'manager') && (
+                  <form className="crud-form" onSubmit={handleDepositSubmit}>
+                    <h3>Record a Deposit Transaction</h3>
+
+                    <div className="form-grid">
+                      <label>
+                        Transaction type
+                        <select
+                          value={depositForm.type}
+                          onChange={(event) =>
+                            setDepositForm((previous) => ({
+                              ...previous,
+                              type: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="payment">Deposit payment received</option>
+                          <option value="deduction">Move-out deduction</option>
+                          <option value="refund">Deposit refund</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Amount
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          required
+                          value={depositForm.amount}
+                          onChange={(event) =>
+                            setDepositForm((previous) => ({
+                              ...previous,
+                              amount: event.target.value,
+                            }))
+                          }
+                          placeholder="0.00"
+                        />
+                      </label>
+
+                      <label>
+                        Transaction date
+                        <input
+                          type="date"
+                          required
+                          value={depositForm.transactionDate}
+                          onChange={(event) =>
+                            setDepositForm((previous) => ({
+                              ...previous,
+                              transactionDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        Notes / deduction reason
+                        <input
+                          type="text"
+                          maxLength="1000"
+                          value={depositForm.notes}
+                          onChange={(event) =>
+                            setDepositForm((previous) => ({
+                              ...previous,
+                              notes: event.target.value,
+                            }))
+                          }
+                          placeholder="Payment reference or reason for deduction/refund"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="form-actions">
+                      <button
+                        type="submit"
+                        className="small-btn"
+                        disabled={depositLoading}
+                      >
+                        Record Transaction
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Notes</th>
+                        <th>Recorded by</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(depositSummary.transactions || []).length === 0 ? (
+                        <tr>
+                          <td colSpan="5">No security-deposit transactions recorded.</td>
+                        </tr>
+                      ) : (
+                        depositSummary.transactions.map((transaction) => (
+                          <tr key={transaction.id}>
+                            <td>
+                              {formatDateTime(
+                                transaction.transaction_date ??
+                                transaction.transactionDate ??
+                                transaction.created_at
+                              )}
+                            </td>
+                            <td>
+                              {String(
+                                transaction.transaction_type ??
+                                transaction.transactionType ??
+                                transaction.type ??
+                                ''
+                              ).replace(/_/g, ' ')}
+                            </td>
+                            <td>{formatCurrency(transaction.amount)}</td>
+                            <td>{transaction.notes || 'â€”'}</td>
+                            <td>{transaction.recorded_by ?? transaction.recordedBy ?? 'â€”'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === 'payments' ? (
               <div className="stacked-sections">
                 <section className="panel">
                   <div className="panel-header">
