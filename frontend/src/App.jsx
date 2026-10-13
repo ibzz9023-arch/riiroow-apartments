@@ -276,7 +276,7 @@ const [user, setUser] = useState(null);
         {
           method: 'POST',
           body: {
-            type: depositForm.type,
+            transactionType: depositForm.type,
             amount,
             transactionDate: depositForm.transactionDate,
             notes: depositForm.notes,
