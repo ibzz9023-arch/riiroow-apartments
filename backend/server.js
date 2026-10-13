@@ -281,11 +281,10 @@ app.get('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager', 'A
 app.post('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     const { recordSecurityDepositTransaction } = await import('./src/dataService.js');
-    const authPayload = authHeaderToPayload(req);
     const transaction = await recordSecurityDepositTransaction(
       req.params.id,
       req.body || {},
-      authPayload?.sub || null
+      null
     );
     res.status(201).json(transaction);
   } catch (error) {
