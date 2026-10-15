@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
+import QRCode from 'qrcode';
 
 
 const formatCurrency = (value) =>
@@ -210,17 +211,145 @@ const [user, setUser] = useState(null);
     notes: '',
   });
 
+  const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
+  const [qrMaintenanceSubmitting, setQrMaintenanceSubmitting] = useState(false);
+  const [qrPaymentVerificationOpen, setQrPaymentVerificationOpen] = useState(false);
+  const [qrPaymentPin, setQrPaymentPin] = useState('');
+  const [qrPaymentPinError, setQrPaymentPinError] = useState('');
+  const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
+  const [qrTenantToken, setQrTenantToken] = useState('');
+  const [qrMaintenanceForm, setQrMaintenanceForm] = useState({
+    title: '',
+    description: '',
+    priority: 'Medium',
+  });
+  const [qrRecording, setQrRecording] = useState(false);
+  const [qrAudioBlob, setQrAudioBlob] = useState(null);
+  const [qrAudioUrl, setQrAudioUrl] = useState('');
+  const [qrMediaError, setQrMediaError] = useState('');
+  const qrMediaRecorderRef = useRef(null);
+  const qrAudioChunksRef = useRef([]);
+
+  const startQrVoiceRecording = async () => {
+    setQrMediaError('');
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setQrMediaError('Voice recording is not supported by this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const supportedMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+      ];
+
+      const mimeType = supportedMimeTypes.find((type) =>
+        MediaRecorder.isTypeSupported(type)
+      );
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      qrAudioChunksRef.current = [];
+      qrMediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          qrAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const actualMimeType = recorder.mimeType || mimeType || 'audio/webm';
+        const audioBlob = new Blob(qrAudioChunksRef.current, {
+          type: actualMimeType,
+        });
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        setQrAudioBlob(audioBlob);
+        setQrAudioUrl((previousUrl) => {
+          if (previousUrl) URL.revokeObjectURL(previousUrl);
+          return audioUrl;
+        });
+        setQrRecording(false);
+
+        stream.getTracks().forEach((track) => track.stop());
+        qrMediaRecorderRef.current = null;
+        qrAudioChunksRef.current = [];
+      };
+
+      recorder.onerror = () => {
+        setQrMediaError('Unable to record the voice report.');
+        setQrRecording(false);
+        stream.getTracks().forEach((track) => track.stop());
+        qrMediaRecorderRef.current = null;
+      };
+
+      recorder.start();
+      setQrRecording(true);
+    } catch (error) {
+      console.error('QR voice recording error:', error);
+      setQrMediaError(
+        error?.name === 'NotAllowedError'
+          ? 'Microphone permission was denied. Please allow microphone access and try again.'
+          : 'Unable to access the microphone.'
+      );
+      setQrRecording(false);
+    }
+  };
+
+  const stopQrVoiceRecording = () => {
+    const recorder = qrMediaRecorderRef.current;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+  };
+
+  const discardQrVoiceRecording = () => {
+    if (qrMediaRecorderRef.current) {
+      if (qrMediaRecorderRef.current.state !== 'inactive') {
+        qrMediaRecorderRef.current.stop();
+      }
+      qrMediaRecorderRef.current = null;
+    }
+
+    if (qrAudioUrl) {
+      URL.revokeObjectURL(qrAudioUrl);
+    }
+
+    setQrAudioUrl('');
+    setQrAudioBlob(null);
+    setQrRecording(false);
+    setQrMediaError('');
+    qrAudioChunksRef.current = [];
+  };
+  const qrPathMatch = window.location.pathname.match(/\/qr\/([^/]+)/i);
+  const qrUnitNumber = qrPathMatch ? decodeURIComponent(qrPathMatch[1]) : '';
+
+
   const requestJson = async (path, options = {}) => {
     const { method = 'GET', body, headers = {} } = options;
     const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method,
       headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(body
+        ? { body: isFormData ? body : JSON.stringify(body) }
+        : {}),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -229,6 +358,145 @@ const [user, setUser] = useState(null);
     }
 
     return data;
+  };
+  const printUnitQRCodes = async () => {
+    if (!units.length) {
+      window.alert('No units are available to print QR codes.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+    if (!printWindow) {
+      window.alert('Please allow pop-ups for Riiroow to print QR codes.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Riiroow Unit QR Codes</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 12mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              background: #fff;
+              color: #171717;
+            }
+
+            .qr-page {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 12mm;
+            }
+
+            .qr-card {
+              border: 2px solid #171717;
+              border-radius: 12px;
+              min-height: 115mm;
+              padding: 10mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            .brand {
+              font-size: 20px;
+              font-weight: 800;
+              letter-spacing: 2px;
+              margin-bottom: 5mm;
+            }
+
+            .qr-label {
+              font-size: 28px;
+              font-weight: 800;
+              margin-bottom: 2mm;
+            }
+
+            .unit-label {
+              font-size: 18px;
+              font-weight: 600;
+              margin-bottom: 6mm;
+            }
+
+            .qr-image {
+              width: 58mm;
+              height: 58mm;
+              image-rendering: pixelated;
+            }
+
+            .pin-label {
+              font-size: 24px;
+              font-weight: 900;
+              margin-top: 5mm;
+              padding: 3mm 5mm;
+              border: 2px dashed #171717;
+            }
+
+            .instructions {
+              margin-top: 6mm;
+              font-size: 11px;
+              line-height: 1.4;
+              max-width: 65mm;
+            }
+
+            @media print {
+              .qr-card {
+                box-shadow: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="qr-page" id="qr-page"></div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    const page = printWindow.document.getElementById('qr-page');
+
+    for (const unit of units) {
+      const unitNumber = String(unit.unitNumber || '').trim();
+      const qrData = `https://riiroow-apartments-production.up.railway.app/qr/${encodeURIComponent(unitNumber)}`;
+
+      const qrDataUrl = await QRCode.toDataURL(qrData, {
+        width: 500,
+        margin: 2,
+        errorCorrectionLevel: 'H',
+      });
+
+      const card = printWindow.document.createElement('div');
+      card.className = 'qr-card';
+      card.innerHTML = `
+        <div class="brand">RIIROOW</div>
+        <div class="qr-label">QR ${unitNumber}</div>
+        <div class="unit-label">UNIT ${unitNumber}</div>
+        <img class="qr-image" src="${qrDataUrl}" alt="QR code for unit ${unitNumber}" />
+        <div class="pin-label">TENANT PIN: ${String(unitNumber).padStart(4, '0')}</div>
+        <div class="instructions">
+          Scan this code for Riiroow apartment services.
+        </div>
+      `;
+
+      page.appendChild(card);
+    }
+
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 300);
   };
 
   const loadSecurityDeposit = async (leaseId) => {
@@ -276,7 +544,7 @@ const [user, setUser] = useState(null);
         {
           method: 'POST',
           body: {
-            type: depositForm.type,
+            transactionType: depositForm.type,
             amount,
             transactionDate: depositForm.transactionDate,
             notes: depositForm.notes,
@@ -304,6 +572,120 @@ const [user, setUser] = useState(null);
       setDepositLoading(false);
     }
   };
+  const handleQrMaintenanceSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setError('Verify your tenant PIN before submitting a maintenance request.');
+      return;
+    }
+
+    const form = event.currentTarget;
+    const payload = new FormData(form);
+    const title = String(payload.get('title') || '').trim();
+    const description = String(payload.get('description') || '').trim();
+
+    if (qrAudioBlob) {
+      const audioExtension = qrAudioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      payload.append('audio', qrAudioBlob, 'voice-report.' + audioExtension);
+    }
+
+    const hasMedia = ['audio', 'photo', 'video'].some((field) => {
+      const file = payload.get(field);
+      return file && typeof file === 'object' && file.size > 0;
+    });
+
+    if (!title && !description && !hasMedia) {
+      setError('Describe the problem or attach a voice recording, photo, or video.');
+      return;
+    }
+
+    setError('');
+    setInfoMessage('');
+    setQrMaintenanceSubmitting(true);
+
+    try {
+      const response = await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/maintenance`,
+        {
+          method: 'POST',
+          body: payload,
+          headers: { Authorization: `Bearer ${qrTenantToken}` },
+        }
+      );
+
+      setInfoMessage(
+        response.message || 'Maintenance request submitted successfully.'
+      );
+
+      setQrMaintenanceForm({
+        title: '',
+        description: '',
+        priority: 'Medium',
+      });
+
+      form.reset();
+
+      if (qrAudioUrl) {
+        URL.revokeObjectURL(qrAudioUrl);
+      }
+
+      setQrAudioUrl('');
+      setQrAudioBlob(null);
+      setQrMediaError('');
+      setQrMaintenanceOpen(false);
+    } catch (requestError) {
+      setError(
+        requestError.message || 'Unable to submit the maintenance request.'
+      );
+    } finally {
+      setQrMaintenanceSubmitting(false);
+    }
+  };
+
+  const handleQrPaymentPinSubmit = async (event) => {
+    event.preventDefault();
+
+    const enteredPin = qrPaymentPin.trim();
+
+    if (!/^\d{4}$/.test(enteredPin)) {
+      setQrPaymentPinError('Enter your tenant PIN.');
+      setQrPaymentVerified(false);
+      setQrTenantToken('');
+      return;
+    }
+
+    setQrPaymentPinError('');
+    setQrPaymentVerified(false);
+    setQrTenantToken('');
+
+    try {
+      const response = await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/verify-pin`,
+        {
+          method: 'POST',
+          body: { pin: enteredPin },
+          headers: { Authorization: '' },
+        }
+      );
+
+      if (!response.token) {
+        throw new Error('Verification did not return a tenant session. Please try again.');
+      }
+
+      setQrTenantToken(response.token);
+      setQrPaymentPin('');
+      setQrPaymentPinError('');
+      setQrPaymentVerified(true);
+    } catch (requestError) {
+      setQrPaymentPinError(
+        requestError.message || 'Unable to verify your PIN. Please try again.'
+      );
+      setQrPaymentVerified(false);
+      setQrTenantToken('');
+    }
+  };
+
   const fetchDashboard = async () => {
     try {
       setLoading(true);
@@ -565,6 +947,67 @@ const handleLogin = async (event) => {
       await fetchDashboard();
     } catch (submitError) {
       setError(submitError.message);
+    }
+  };
+
+  const handleGenerateTenantPin = async (lease) => {
+    if (String(lease.status).toLowerCase() !== 'active') {
+      window.alert('A tenant PIN can only be generated for an active lease.');
+      return;
+    }
+
+    const typedUnitNumber = window.prompt(
+      `Safety check: type ${lease.unitNumber} to confirm the correct unit.`,
+      ''
+    );
+
+    if (typedUnitNumber === null) return;
+
+    if (typedUnitNumber.trim() !== String(lease.unitNumber).trim()) {
+      window.alert('Unit number did not match. No PIN was changed.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `FINAL CONFIRMATION: Generate or reset the PIN for Unit ${lease.unitNumber}? Existing PIN access will be reset.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setInfoMessage('');
+
+    try {
+      const response = await requestJson(
+        `/api/manager/leases/${encodeURIComponent(lease.id)}/tenant-pin`,
+        {
+          method: 'POST',
+          body: { expectedUnitNumber: typedUnitNumber.trim() },
+        }
+      );
+
+      if (
+        String(response.unitNumber) !== typedUnitNumber.trim() ||
+        String(response.pin || '') !== String(lease.unitNumber).padStart(4, '0') ||
+        !/^\d{4}$/.test(String(response.pin || ''))
+      ) {
+        throw new Error(
+          'Safety check failed: the server returned a different unit. Do not share a PIN.'
+        );
+      }
+
+      window.alert(
+        `NEW TENANT PIN — UNIT ${lease.unitNumber}\n\n` +
+        `${response.pin}\n\n` +
+        'Give this PIN directly to the authorized tenant. ' +
+        'It will not be shown again. Do not share it publicly.'
+      );
+
+      setInfoMessage(
+        `A new tenant PIN was generated for Unit ${lease.unitNumber}. Share it privately with the authorized tenant.`
+      );
+    } catch (requestError) {
+      setError(requestError.message || 'Unable to generate the tenant PIN.');
     }
   };
 
@@ -1370,6 +1813,240 @@ const handleLogin = async (event) => {
     }
   };
 
+  if (qrUnitNumber) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="brand-header">
+            <div className="brand-mark">
+              <img src={import.meta.env.BASE_URL + 'riiroow-logo.png'} alt="Riiroow Apartments logo" />
+            </div>
+            <div className="brand-copy">
+              <p className="eyebrow">Riiroow Apartments</p>
+              <h1>Unit {qrUnitNumber}</h1>
+            </div>
+          </div>
+
+          <div className="auth-intro">
+            Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
+          </div>
+
+          <div className="stacked-sections">
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => setQrMaintenanceOpen(true)}
+            >
+              Maintenance Request
+            </button>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setQrPaymentPin('');
+                setQrPaymentPinError('');
+                setQrPaymentVerified(false);
+                setQrPaymentVerificationOpen(true);
+              }}
+            >
+              Tenant PIN Verification
+            </button>
+          </div>
+
+          {qrPaymentVerificationOpen ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Tenant PIN Verification</h3>
+              </div>
+              <form className="crud-form" onSubmit={handleQrPaymentPinSubmit}>
+                <label>
+                  Unit number PIN
+                  <input
+                    type="password"
+                    name="pin"
+                    value={qrPaymentPin}
+                    onChange={(event) => {
+                      setQrPaymentPin(event.target.value);
+                      setQrPaymentPinError('');
+                      setQrPaymentVerified(false);
+                    }}
+                    autoComplete="off"
+                    maxLength={64}
+                    aria-describedby="qr-payment-pin-note"
+                  />
+                </label>
+                {qrPaymentPinError ? <p className="error-text" role="alert">{qrPaymentPinError}</p> : null}
+                {qrPaymentVerified ? (
+                  <p className="success-text" role="status">
+                    Tenant PIN verified. Payment records and other private information are not available in this portal.
+                  </p>
+                ) : null}
+                <p id="qr-payment-pin-note">
+                  The unit number is guessable and is not strong authentication. This check does not grant access to private records.
+                </p>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setQrPaymentVerificationOpen(false)}
+                  >
+                    Back
+                  </button>
+                  <button type="submit" className="primary-btn">Verify PIN</button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          {qrMaintenanceOpen ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Report a maintenance problem</h3>
+              </div>
+
+              <form className="crud-form" onSubmit={handleQrMaintenanceSubmit}>
+                <label>
+                  What is the problem?
+                  <input
+                    type="text"
+                    name="title"
+                    value={qrMaintenanceForm.title}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        title: e.target.value,
+                      }))
+                    }
+                    placeholder="Example: Water leak"
+                    maxLength={200}
+                  />
+                </label>
+
+                <label>
+                  Details <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <textarea
+                    name="description"
+                    value={qrMaintenanceForm.description}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        description: e.target.value,
+                      }))
+                    }
+                    placeholder="Describe what is happening..."
+                    maxLength={5000}
+                    rows={5}
+                  />
+                </label>
+
+                <label>
+                  Priority
+                  <select
+                    name="priority"
+                    value={qrMaintenanceForm.priority}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        priority: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Emergency">Emergency</option>
+                  </select>
+                </label>
+
+                <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>
+        <div>
+          <strong>Voice report</strong>
+          <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {!qrRecording ? (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={startQrVoiceRecording}
+              >
+                {qrAudioBlob ? 'Record Again' : 'Record Voice'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={stopQrVoiceRecording}
+              >
+                Stop Recording
+              </button>
+            )}
+
+            {qrAudioBlob ? (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={discardQrVoiceRecording}
+              >
+                Discard Recording
+              </button>
+            ) : null}
+          </div>
+
+          {qrAudioUrl ? (
+            <audio
+              controls
+              src={qrAudioUrl}
+              style={{ width: '100%', marginTop: '8px' }}
+            />
+          ) : null}
+        </div>
+
+        <label>
+          Photo <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input
+            type="file"
+            name="photo"
+            accept="image/*"
+          />
+        </label>
+
+        <label>
+          Video <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input
+            type="file"
+            name="video"
+            accept="video/*"
+          />
+        </label>
+
+        {qrMediaError ? (
+          <div style={{ color: '#b42318', fontSize: '14px' }}>
+            {qrMediaError}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="form-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setQrMaintenanceOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="primary-btn">
+                    Submit Request
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+
   if (!user) {
     return (
       <div className="auth-shell">
@@ -1716,6 +2393,9 @@ const handleLogin = async (event) => {
                 <section className="panel">
                   <div className="panel-header">
                     <h3>Unit list</h3>
+                    <button type="button" className="small-btn" onClick={printUnitQRCodes}>
+                      Export QR Codes
+                    </button>
                   </div>
                   <div className="table-wrap">
                     {units.length ? (
@@ -2213,6 +2893,16 @@ const handleLogin = async (event) => {
                                       Edit
                                     </button>
 
+                                                                        {['admin', 'manager'].includes(role) &&
+                                    String(lease.status).toLowerCase() === 'active' ? (
+                                      <button
+                                        className="small-btn"
+                                        type="button"
+                                        onClick={() => handleGenerateTenantPin(lease)}
+                                      >
+                                        Generate / Reset Tenant PIN
+                                      </button>
+                                    ) : null}
                                     <button
                                       className="small-btn"
                                       type="button"
