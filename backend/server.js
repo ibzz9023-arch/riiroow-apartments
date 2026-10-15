@@ -1,4 +1,11 @@
 import express from 'express';
+import crypto from 'node:crypto';
+import multer from 'multer';
+import {
+  generateTenantPin,
+  verifyTenantPin,
+  requireTenantQrSession,
+} from './src/tenantQrAuth.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -25,7 +32,7 @@ import {
   terminateLease,
   toLegacyUser,
 } from './src/dataService.js';
-import { hasSupabase, supabase } from './src/supabaseClient.js';
+import { hasSupabase, supabase, supabaseServiceRole } from './src/supabaseClient.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -35,6 +42,9 @@ const __dirname = path.dirname(__filename);
 const frontendDist = path.resolve(__dirname, '../frontend/dist');
 
 const app = express();
+
+// Railway runs the app behind its trusted ingress proxy.
+app.set('trust proxy', 1);
 const port = Number(process.env.PORT || 5000);
 
 // Basic production security headers.
@@ -48,6 +58,85 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json());
+
+const QR_MEDIA_BUCKET = 'maintenance-evidence';
+const QR_MEDIA_LIMITS = {
+  photo: 10 * 1024 * 1024,
+  video: 50 * 1024 * 1024,
+  audio: 10 * 1024 * 1024,
+};
+const QR_MEDIA_MIME_TYPES = {
+  photo: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif']),
+  video: new Set(['video/mp4', 'video/webm', 'video/quicktime', 'video/3gpp', 'video/3gpp2', 'video/x-m4v', 'video/ogg', 'video/x-matroska']),
+  audio: new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/x-m4a', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/3gpp', 'audio/3gpp2', 'audio/flac']),
+};
+const QR_MEDIA_EXTENSIONS = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'video/3gpp': '3gp',
+  'video/3gpp2': '3g2',
+  'video/x-m4v': 'm4v',
+  'video/ogg': 'ogv',
+  'video/x-matroska': 'mkv',
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/aac': 'aac',
+  'audio/3gpp': '3gp',
+  'audio/3gpp2': '3g2',
+  'audio/flac': 'flac',
+};
+const qrMaintenanceMultipart = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 3,
+    fileSize: QR_MEDIA_LIMITS.video,
+    fields: 3,
+    fieldSize: 25 * 1024,
+  },
+  fileFilter: (req, file, callback) => {
+    const mimeType = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+    if (!QR_MEDIA_MIME_TYPES[file.fieldname]?.has(mimeType)) {
+      const error = Object.assign(new Error(`Unsupported ${file.fieldname} file type.`), { statusCode: 400 });
+      return callback(error);
+    }
+    callback(null, true);
+  },
+}).fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'video', maxCount: 1 },
+  { name: 'audio', maxCount: 1 },
+]);
+
+const parseQrMaintenanceMultipart = (req, res, next) => {
+  qrMaintenanceMultipart(req, res, (error) => {
+    if (!error) return next();
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      const limit = QR_MEDIA_LIMITS[error.field] || QR_MEDIA_LIMITS.video;
+      const sizeInMb = limit / (1024 * 1024);
+      return res.status(413).json({ error: `${error.field || 'Media'} exceeds the ${sizeInMb} MB file limit.` });
+    }
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ error: 'Attach no more than one photo, one video, and one voice recording.' });
+    }
+
+    return res.status(error.statusCode || 400).json({ error: error.message || 'Invalid maintenance media upload.' });
+  });
+};
 
 const authHeaderToRole = (req) => {
   const authHeader = req.headers.authorization || '';
@@ -406,6 +495,189 @@ app.delete('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), 
   } catch (error) {
     console.error('Delete payment error:', error);
     res.status(500).json({ error: 'Unable to delete payment.' });
+  }
+});
+
+app.post('/api/manager/leases/:leaseId/tenant-pin', requireRoles('Admin', 'Manager'), generateTenantPin);
+
+app.post('/api/public/qr/:unitNumber/verify-pin', verifyTenantPin);
+app.post('/api/public/qr/:unitNumber/maintenance', requireTenantQrSession, parseQrMaintenanceMultipart, async (req, res) => {
+  let item = null;
+  let hasQrMedia = false;
+  const uploadedStoragePaths = [];
+
+  try {
+    const unitNumber = Number(req.params.unitNumber);
+    const { title, description, priority } = req.body || {};
+    const mediaFiles = ['audio', 'photo', 'video'].flatMap((field) => req.files?.[field] || []);
+    hasQrMedia = mediaFiles.length > 0;
+
+    if (!Number.isInteger(unitNumber) || unitNumber <= 0) {
+      return res.status(400).json({ error: 'Invalid unit number.' });
+    }
+
+    const units = await getUnits();
+    const unit = units.find(
+      (item) => Number(item.unitNumber ?? item.unit_number) === unitNumber
+    );
+
+    if (!unit) {
+      return res.status(404).json({ error: 'Unit not found.' });
+    }
+
+    const cleanTitle = String(title ?? '').trim();
+    const cleanDescription = String(description ?? '').trim();
+    const allowedPriorities = ['Low', 'Medium', 'High', 'Emergency'];
+    const cleanPriority = allowedPriorities.includes(String(priority))
+      ? priority
+      : 'Medium';
+
+    if (!cleanTitle && !cleanDescription && !mediaFiles.length) {
+      return res.status(400).json({
+        error: 'Describe the problem or attach a voice recording, photo, or video.'
+      });
+    }
+
+    if (cleanTitle.length > 200) {
+      return res.status(400).json({
+        error: 'Maintenance title is too long.'
+      });
+    }
+
+    if (cleanDescription.length > 5000) {
+      return res.status(400).json({
+        error: 'Maintenance description is too long.'
+      });
+    }
+
+    for (const file of mediaFiles) {
+      const maximumSize = QR_MEDIA_LIMITS[file.fieldname];
+      if (file.size > maximumSize) {
+        return res.status(413).json({
+          error: `${file.fieldname} exceeds the ${maximumSize / (1024 * 1024)} MB file limit.`,
+        });
+      }
+    }
+
+    if (mediaFiles.length && !supabaseServiceRole) {
+      return res.status(503).json({ error: 'Media uploads are unavailable right now. Please submit a text-only request or try again later.' });
+    }
+
+    const maintenancePayload = {
+      property_id: unit.propertyId ?? unit.property_id ?? null,
+      tenant_id: req.tenantQrAccess.tenantId,
+      unit_id: unit.id ?? null,
+      unit_number: unitNumber,
+      title: cleanTitle || 'Maintenance request',
+      description: cleanDescription,
+      priority: cleanPriority,
+      status: 'Pending',
+      assigned_technician: '',
+      request_date: new Date().toISOString().slice(0, 10),
+      due_date: null,
+      completion_date: null,
+      reminder_at: null,
+      notes: 'Submitted through the Riiroow unit QR service.',
+      created_at: new Date().toISOString(),
+    };
+
+    if (mediaFiles.length) {
+      const { data, error } = await supabaseServiceRole
+        .from('maintenance_requests')
+        .insert([{ ...maintenancePayload, id: crypto.randomUUID() }])
+        .select()
+        .single();
+      if (error) throw error;
+      item = data;
+
+      const evidenceRows = [];
+      for (const file of mediaFiles) {
+        const mimeType = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+        const extension = QR_MEDIA_EXTENSIONS[mimeType] || 'bin';
+        const storagePath = `${item.id}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabaseServiceRole.storage
+          .from(QR_MEDIA_BUCKET)
+          .upload(storagePath, file.buffer, { contentType: mimeType, upsert: false });
+        if (uploadError) throw uploadError;
+
+        uploadedStoragePaths.push(storagePath);
+        const originalName = String(file.originalname || 'upload')
+          .replace(/\\/g, '/')
+          .split('/')
+          .pop()
+          .replace(/[\u0000-\u001f\u007f]/g, '')
+          .slice(0, 255) || 'upload';
+        evidenceRows.push({
+          maintenance_request_id: item.id,
+          file_type: file.fieldname,
+          storage_path: storagePath,
+          original_name: originalName,
+          mime_type: mimeType,
+          file_size: file.size,
+        });
+      }
+
+      const { error: evidenceError } = await supabaseServiceRole.from('maintenance_evidence').insert(evidenceRows);
+      if (evidenceError) throw evidenceError;
+    } else {
+      item = await createEntity('maintenance_requests', maintenancePayload);
+    }
+
+    res.status(201).json({
+      success: true,
+      requestId: item.id,
+      unitNumber,
+      status: item.status ?? 'Pending',
+      message: 'Maintenance request submitted successfully.'
+    });
+  } catch (error) {
+    console.error('Public QR maintenance error:', error);
+
+    if (item && hasQrMedia && supabaseServiceRole) {
+      let cleanupSucceeded = true;
+      try {
+        const { error: evidenceDeleteError } = await supabaseServiceRole
+          .from('maintenance_evidence')
+          .delete()
+          .eq('maintenance_request_id', item.id);
+        if (evidenceDeleteError) {
+          cleanupSucceeded = false;
+          console.error('Public QR evidence cleanup error:', evidenceDeleteError);
+        }
+
+        if (uploadedStoragePaths.length) {
+          const { error: storageDeleteError } = await supabaseServiceRole.storage
+            .from(QR_MEDIA_BUCKET)
+            .remove(uploadedStoragePaths);
+          if (storageDeleteError) {
+            cleanupSucceeded = false;
+            console.error('Public QR storage cleanup error:', storageDeleteError);
+          }
+        }
+
+        const { error: requestDeleteError } = await supabaseServiceRole
+          .from('maintenance_requests')
+          .delete()
+          .eq('id', item.id);
+        if (requestDeleteError) {
+          cleanupSucceeded = false;
+          console.error('Public QR request cleanup error:', requestDeleteError);
+        }
+      } catch (cleanupError) {
+        cleanupSucceeded = false;
+        console.error('Public QR cleanup error:', cleanupError);
+      }
+
+      return res.status(500).json({
+        error: cleanupSucceeded
+          ? 'Media upload failed. The maintenance request was not saved. Please try again.'
+          : 'Media upload failed and cleanup could not be confirmed. Please contact management before submitting again.',
+      });
+    }
+
+    res.status(500).json({
+      error: 'Unable to submit maintenance request.'
+    });
   }
 });
 
