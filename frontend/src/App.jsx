@@ -956,8 +956,20 @@ const handleLogin = async (event) => {
       return;
     }
 
+    const typedUnitNumber = window.prompt(
+      `Safety check: type ${lease.unitNumber} to confirm the correct unit.`,
+      ''
+    );
+
+    if (typedUnitNumber === null) return;
+
+    if (typedUnitNumber.trim() !== String(lease.unitNumber).trim()) {
+      window.alert('Unit number did not match. No PIN was changed.');
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Generate a new tenant PIN for Unit ${lease.unitNumber}? Any existing PIN will be replaced and current tenant sessions revoked. Continue only if you are ready to share the new PIN privately.`
+      `FINAL CONFIRMATION: Generate or reset the PIN for Unit ${lease.unitNumber}? Existing PIN access will be reset.`
     );
 
     if (!confirmed) return;
@@ -968,11 +980,20 @@ const handleLogin = async (event) => {
     try {
       const response = await requestJson(
         `/api/manager/leases/${encodeURIComponent(lease.id)}/tenant-pin`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          body: { expectedUnitNumber: typedUnitNumber.trim() },
+        }
       );
 
-      if (!/^\d{1,6}$/.test(String(response.pin || ''))) {
-        throw new Error('The server did not return a valid unit-number PIN.');
+      if (
+        String(response.unitNumber) !== typedUnitNumber.trim() ||
+        String(response.pin || '') !== typedUnitNumber.trim() ||
+        !/^\d{1,6}$/.test(String(response.pin || ''))
+      ) {
+        throw new Error(
+          'Safety check failed: the server returned a different unit. Do not share a PIN.'
+        );
       }
 
       window.alert(

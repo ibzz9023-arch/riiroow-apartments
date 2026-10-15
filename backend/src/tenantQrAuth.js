@@ -109,6 +109,13 @@ export const generateTenantPin = async (req, res) => {
     }
 
     const unitNumber = getUnitNumber(lease);
+    const expectedUnitNumber = String(req.body?.expectedUnitNumber ?? '').trim();
+
+    if (!/^\d{1,6}$/.test(expectedUnitNumber)) {
+      return res.status(400).json({
+        error: 'Confirm the unit number before generating a PIN.',
+      });
+    }
 
     if (
       !Number.isInteger(unitNumber) ||
@@ -117,6 +124,12 @@ export const generateTenantPin = async (req, res) => {
     ) {
       return res.status(400).json({
         error: 'This lease has an invalid unit number.',
+      });
+    }
+
+    if (expectedUnitNumber !== String(unitNumber)) {
+      return res.status(409).json({
+        error: 'Unit confirmation did not match this lease. No PIN was changed.',
       });
     }
 
