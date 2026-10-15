@@ -486,7 +486,7 @@ const [user, setUser] = useState(null);
         <div class="qr-label">QR ${unitNumber}</div>
         <div class="unit-label">UNIT ${unitNumber}</div>
         <img class="qr-image" src="${qrDataUrl}" alt="QR code for unit ${unitNumber}" />
-        <div class="pin-label">TENANT PIN: ${unitNumber}</div>
+        <div class="pin-label">TENANT PIN: ${String(unitNumber).padStart(4, '0')}</div>
         <div class="instructions">
           Scan this code for Riiroow apartment services.
         </div>
@@ -648,7 +648,7 @@ const [user, setUser] = useState(null);
 
     const enteredPin = qrPaymentPin.trim();
 
-    if (!/^\d{1,6}$/.test(enteredPin)) {
+    if (!/^\d{4}$/.test(enteredPin)) {
       setQrPaymentPinError('Enter your tenant PIN.');
       setQrPaymentVerified(false);
       setQrTenantToken('');
@@ -956,8 +956,20 @@ const handleLogin = async (event) => {
       return;
     }
 
+    const typedUnitNumber = window.prompt(
+      `Safety check: type ${lease.unitNumber} to confirm the correct unit.`,
+      ''
+    );
+
+    if (typedUnitNumber === null) return;
+
+    if (typedUnitNumber.trim() !== String(lease.unitNumber).trim()) {
+      window.alert('Unit number did not match. No PIN was changed.');
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Generate a new tenant PIN for Unit ${lease.unitNumber}? Any existing PIN will be replaced and current tenant sessions revoked. Continue only if you are ready to share the new PIN privately.`
+      `FINAL CONFIRMATION: Generate or reset the PIN for Unit ${lease.unitNumber}? Existing PIN access will be reset.`
     );
 
     if (!confirmed) return;
@@ -968,11 +980,20 @@ const handleLogin = async (event) => {
     try {
       const response = await requestJson(
         `/api/manager/leases/${encodeURIComponent(lease.id)}/tenant-pin`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          body: { expectedUnitNumber: typedUnitNumber.trim() },
+        }
       );
 
-      if (!/^\d{1,6}$/.test(String(response.pin || ''))) {
-        throw new Error('The server did not return a valid unit-number PIN.');
+      if (
+        String(response.unitNumber) !== typedUnitNumber.trim() ||
+        String(response.pin || '') !== String(lease.unitNumber).padStart(4, '0') ||
+        !/^\d{4}$/.test(String(response.pin || ''))
+      ) {
+        throw new Error(
+          'Safety check failed: the server returned a different unit. Do not share a PIN.'
+        );
       }
 
       window.alert(

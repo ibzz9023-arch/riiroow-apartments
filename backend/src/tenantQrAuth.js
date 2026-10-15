@@ -109,6 +109,13 @@ export const generateTenantPin = async (req, res) => {
     }
 
     const unitNumber = getUnitNumber(lease);
+    const expectedUnitNumber = String(req.body?.expectedUnitNumber ?? '').trim();
+
+    if (!/^\d{1,6}$/.test(expectedUnitNumber)) {
+      return res.status(400).json({
+        error: 'Confirm the unit number before generating a PIN.',
+      });
+    }
 
     if (
       !Number.isInteger(unitNumber) ||
@@ -120,7 +127,13 @@ export const generateTenantPin = async (req, res) => {
       });
     }
 
-    const pin = String(unitNumber);
+    if (expectedUnitNumber !== String(unitNumber)) {
+      return res.status(409).json({
+        error: 'Unit confirmation did not match this lease. No PIN was changed.',
+      });
+    }
+
+    const pin = String(unitNumber).padStart(4, '0');
     const pinHash = await argon2.hash(hashPinInput(pin), ARGON2_OPTIONS);
 
     const { error } = await supabase.rpc('reset_tenant_qr_pin', {
@@ -168,7 +181,7 @@ export const verifyTenantPin = async (req, res) => {
       return res.status(400).json({ error: 'Invalid unit number.' });
     }
 
-    if (!/^\d{1,6}$/.test(pin)) {
+    if (!/^\d{4}$/.test(pin)) {
       return res.status(401).json({
         error: 'Invalid PIN or unavailable tenant access.',
       });
