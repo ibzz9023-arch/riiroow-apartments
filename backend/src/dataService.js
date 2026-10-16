@@ -1129,7 +1129,8 @@ export const deleteEntity = async (entityName, id) => {
       if (error) throw error;
       return true;
     } catch (error) {
-      console.warn('Supabase delete failed, removing from local fallback store.', error?.message || error);
+      console.error('Supabase delete failed; deletion was not completed.', error?.message || error);
+      throw error;
     }
   }
 
