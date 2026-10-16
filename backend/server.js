@@ -298,6 +298,47 @@ app.post('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager'), 
     });
   }
 });
+app.patch('/api/leases/:id/security-deposits/:transactionId', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const { updateSecurityDepositTransaction } = await import('./src/dataService.js');
+    const transaction = await updateSecurityDepositTransaction(
+      req.params.id,
+      req.params.transactionId,
+      req.body || {}
+    );
+    res.json(transaction);
+  } catch (error) {
+    const status = error.code === 'NOT_FOUND' ? 404 :
+      error.code === 'DEPOSIT_VALIDATION' ? 400 : 500;
+    if (status === 500) console.error('Update security deposit transaction error:', error.message || error);
+    res.status(status).json({
+      error: status === 404 ? error.message || 'Lease or transaction not found.' :
+        status === 400 ? error.message :
+        'Unable to update the security deposit transaction. Confirm the edit/delete database migration has been applied.'
+    });
+  }
+});
+
+app.delete('/api/leases/:id/security-deposits/:transactionId', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const { deleteSecurityDepositTransaction } = await import('./src/dataService.js');
+    const transaction = await deleteSecurityDepositTransaction(
+      req.params.id,
+      req.params.transactionId
+    );
+    res.json(transaction);
+  } catch (error) {
+    const status = error.code === 'NOT_FOUND' ? 404 :
+      error.code === 'DEPOSIT_VALIDATION' ? 400 : 500;
+    if (status === 500) console.error('Delete security deposit transaction error:', error.message || error);
+    res.status(status).json({
+      error: status === 404 ? error.message || 'Lease or transaction not found.' :
+        status === 400 ? error.message :
+        'Unable to delete the security deposit transaction. Confirm the edit/delete database migration has been applied.'
+    });
+  }
+});
+
 app.post('/api/leases', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     const item = await createLease({

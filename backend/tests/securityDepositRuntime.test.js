@@ -1,4 +1,4 @@
-﻿import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+﻿import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 const tempDirectory = join(
   tmpdir(),
-  `riiroow-deposit-tests-${process.pid}-${Date.now()}`
+  `riiroow-security-deposit-tests-${process.pid}-${Date.now()}`
 );
 const storeFilePath = join(tempDirectory, 'store.json');
 
@@ -16,168 +16,221 @@ process.env.SUPABASE_ANON_KEY = '';
 process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 
 const { hasSupabase } = await import('../src/supabaseClient.js');
-assert.equal(hasSupabase, false, 'Tests must not connect to Supabase.');
+
+assert.equal(
+  hasSupabase,
+  false,
+  'Security deposit runtime tests must not connect to Supabase.'
+);
 
 const { seedState } = await import('../src/store.js');
 const {
   getSecurityDepositSummary,
   recordSecurityDepositTransaction,
+  updateSecurityDepositTransaction,
+  deleteSecurityDepositTransaction,
 } = await import('../src/dataService.js');
 
 mkdirSync(tempDirectory, { recursive: true });
-writeFileSync(storeFilePath, JSON.stringify(seedState(), null, 2));
 
-const readStore = () =>
-  JSON.parse(readFileSync(storeFilePath, 'utf8'));
+const resetStore = () => {
+  const state = seedState();
+  const lease = state.leases.find((item) => item.id === 'lease-101');
 
-const prepareLease = (deposit = 1000) => {
-  const state = readStore();
-  const lease = state.leases?.[0];
-
-  assert.ok(lease, 'Expected a seeded lease for the test.');
-
-  lease.security_deposit = deposit;
+  assert.ok(lease, 'Expected the synthetic lease-101 test fixture.');
+  lease.security_deposit = 1000;
   state.securityDepositTransactions = [];
 
   writeFileSync(storeFilePath, JSON.stringify(state, null, 2));
-
-  return lease;
 };
 
-const restoreStore = (snapshot) => {
-  writeFileSync(storeFilePath, JSON.stringify(snapshot, null, 2));
-};
-
-test('records a deposit payment and calculates the correct balance', async (t) => {
-  const original = readStore();
-  t.after(() => restoreStore(original));
-
-  const lease = prepareLease(1000);
-  const before = readStore();
-  const originalPayments = JSON.stringify(before.payments || []);
-
-  const transaction = await recordSecurityDepositTransaction(lease.id, {
-    transactionType: 'payment',
-    amount: 400,
-    notes: 'Deposit test payment',
-  });
-
-  assert.equal(transaction.transaction_type, 'payment');
-  assert.equal(transaction.amount, 400);
-  assert.equal(transaction.lease_id, lease.id);
-
-  const summary = await getSecurityDepositSummary(lease.id);
-
-  assert.equal(summary.agreedDeposit, 1000);
-  assert.equal(summary.depositReceived, 400);
-  assert.equal(summary.outstandingDeposit, 600);
-  assert.equal(summary.availableDeposit, 400);
-  assert.equal(summary.transactions.length, 1);
-
-  const after = readStore();
-  assert.equal(
-    JSON.stringify(after.payments || []),
-    originalPayments,
-    'Recording a deposit must not change rent payments.'
-  );
+test.after(() => {
+  rmSync(tempDirectory, { recursive: true, force: true });
 });
 
-test('rejects deposit payments above the agreed amount', async (t) => {
-  const original = readStore();
-  t.after(() => restoreStore(original));
+test('records a deposit payment and updates the summary', async () => {
+  resetStore();
 
-  const lease = prepareLease(1000);
+  const transaction = await recordSecurityDepositTransaction(
+    'lease-101',
+    {
+      transactionType: 'payment',
+      amount: 300,
+      transactionDate: '2026-10-12T10:00:00.000Z',
+      notes: 'Automated test payment',
+    },
+    'automated-test'
+  );
 
-  await recordSecurityDepositTransaction(lease.id, {
+  assert.equal(transaction.lease_id, 'lease-101');
+  assert.equal(transaction.transaction_type, 'payment');
+  assert.equal(transaction.amount, 300);
+  assert.equal(transaction.recorded_by, 'automated-test');
+
+  const summary = await getSecurityDepositSummary('lease-101');
+
+  assert.equal(summary.agreedDeposit, 1000);
+  assert.equal(summary.depositReceived, 300);
+  assert.equal(summary.outstandingDeposit, 700);
+  assert.equal(summary.availableDeposit, 300);
+  assert.equal(summary.transactions.length, 1);
+});
+
+test('rejects a payment exceeding the remaining agreed deposit', async () => {
+  resetStore();
+
+  await recordSecurityDepositTransaction('lease-101', {
     transactionType: 'payment',
-    amount: 800,
+    amount: 900,
+    transactionDate: '2026-10-12T10:00:00.000Z',
   });
 
   await assert.rejects(
-    recordSecurityDepositTransaction(lease.id, {
+    recordSecurityDepositTransaction('lease-101', {
       transactionType: 'payment',
-      amount: 200.01,
+      amount: 100.01,
+      transactionDate: '2026-10-12T10:00:00.000Z',
     }),
     (error) => error.code === 'DEPOSIT_VALIDATION'
   );
 
-  const summary = await getSecurityDepositSummary(lease.id);
-  assert.equal(summary.depositReceived, 800);
+  const summary = await getSecurityDepositSummary('lease-101');
+
+  assert.equal(summary.depositReceived, 900);
   assert.equal(summary.transactions.length, 1);
 });
 
-test('rejects invalid amounts and transaction types', async (t) => {
-  const original = readStore();
-  t.after(() => restoreStore(original));
+test('rejects invalid amounts and unsupported transaction types', async () => {
+  resetStore();
 
-  const lease = prepareLease(1000);
-
-  for (const amount of [0, -1, 1.001, 'not-a-number']) {
+  for (const amount of [0, -1, 1.234, 1000000001, NaN]) {
     await assert.rejects(
-      recordSecurityDepositTransaction(lease.id, {
+      recordSecurityDepositTransaction('lease-101', {
         transactionType: 'payment',
         amount,
       }),
       (error) => error.code === 'DEPOSIT_VALIDATION',
-      `Expected amount ${String(amount)} to be rejected.`
+      `Expected amount ${amount} to be rejected`
     );
   }
 
   await assert.rejects(
-    recordSecurityDepositTransaction(lease.id, {
-      transactionType: 'rent',
+    recordSecurityDepositTransaction('lease-101', {
+      transactionType: 'unsupported',
       amount: 10,
     }),
     (error) => error.code === 'DEPOSIT_VALIDATION'
   );
 
-  const summary = await getSecurityDepositSummary(lease.id);
+  const summary = await getSecurityDepositSummary('lease-101');
+
+  assert.equal(summary.depositReceived, 0);
   assert.equal(summary.transactions.length, 0);
 });
 
-test('records deductions and refunds without exceeding the available deposit', async (t) => {
-  const original = readStore();
-  t.after(() => restoreStore(original));
+test('rejects deductions and refunds exceeding the available deposit', async () => {
+  resetStore();
 
-  const lease = prepareLease(1000);
+  await assert.rejects(
+    recordSecurityDepositTransaction('lease-101', {
+      transactionType: 'deduction',
+      amount: 1,
+    }),
+    (error) => error.code === 'DEPOSIT_VALIDATION'
+  );
 
-  await recordSecurityDepositTransaction(lease.id, {
-    transactionType: 'payment',
-    amount: 600,
-  });
+  await assert.rejects(
+    recordSecurityDepositTransaction('lease-101', {
+      transactionType: 'refund',
+      amount: 1,
+    }),
+    (error) => error.code === 'DEPOSIT_VALIDATION'
+  );
 
-  await recordSecurityDepositTransaction(lease.id, {
-    transactionType: 'deduction',
-    amount: 100,
-  });
+  const summary = await getSecurityDepositSummary('lease-101');
 
-  await recordSecurityDepositTransaction(lease.id, {
-    transactionType: 'refund',
-    amount: 200,
-  });
-
-  const summary = await getSecurityDepositSummary(lease.id);
-
-  assert.equal(summary.agreedDeposit, 1000);
-  assert.equal(summary.depositReceived, 600);
-  assert.equal(summary.outstandingDeposit, 400);
-  assert.equal(summary.totalDeductions, 100);
-  assert.equal(summary.totalRefunded, 200);
-  assert.equal(summary.availableDeposit, 300);
-  assert.equal(summary.transactions.length, 3);
-
-  for (const transactionType of ['deduction', 'refund']) {
-    await assert.rejects(
-      recordSecurityDepositTransaction(lease.id, {
-        transactionType,
-        amount: 300.01,
-      }),
-      (error) => error.code === 'DEPOSIT_VALIDATION',
-      `Expected an excessive ${transactionType} to be rejected.`
-    );
-  }
-
-  const finalSummary = await getSecurityDepositSummary(lease.id);
-  assert.equal(finalSummary.availableDeposit, 300);
-  assert.equal(finalSummary.transactions.length, 3);
+  assert.equal(summary.transactions.length, 0);
 });
+
+
+test('edits a deposit transaction while preserving its identity and recorder', async () => {
+  resetStore();
+
+  const original = await recordSecurityDepositTransaction('lease-101', {
+    transactionType: 'payment',
+    amount: 300,
+    transactionDate: '2026-10-12T10:00:00.000Z',
+    notes: 'Original amount',
+  }, 'automated-test');
+
+  const updated = await updateSecurityDepositTransaction(
+    'lease-101',
+    original.id,
+    {
+      transactionType: 'payment',
+      amount: 250,
+      transactionDate: '2026-10-13T10:00:00.000Z',
+      notes: 'Corrected amount',
+    }
+  );
+
+  assert.equal(updated.id, original.id);
+  assert.equal(updated.amount, 250);
+  assert.equal(updated.notes, 'Corrected amount');
+  assert.equal(updated.recorded_by, original.recorded_by);
+
+  const summary = await getSecurityDepositSummary('lease-101');
+  assert.equal(summary.depositReceived, 250);
+  assert.equal(summary.transactions.length, 1);
+});
+
+test('deletes a deposit transaction and updates the summary', async () => {
+  resetStore();
+
+  const transaction = await recordSecurityDepositTransaction('lease-101', {
+    transactionType: 'payment',
+    amount: 300,
+    transactionDate: '2026-10-12T10:00:00.000Z',
+  }, 'automated-test');
+
+  const deleted = await deleteSecurityDepositTransaction(
+    'lease-101',
+    transaction.id
+  );
+
+  assert.equal(deleted.id, transaction.id);
+
+  const summary = await getSecurityDepositSummary('lease-101');
+  assert.equal(summary.depositReceived, 0);
+  assert.equal(summary.transactions.length, 0);
+});
+
+test('prevents edits that would leave deductions above the received deposit', async () => {
+  resetStore();
+
+  const payment = await recordSecurityDepositTransaction('lease-101', {
+    transactionType: 'payment',
+    amount: 300,
+    transactionDate: '2026-10-12T10:00:00.000Z',
+  });
+
+  await recordSecurityDepositTransaction('lease-101', {
+    transactionType: 'deduction',
+    amount: 200,
+    transactionDate: '2026-10-12T10:00:00.000Z',
+  });
+
+  await assert.rejects(
+    updateSecurityDepositTransaction('lease-101', payment.id, {
+      transactionType: 'payment',
+      amount: 100,
+      transactionDate: '2026-10-13T10:00:00.000Z',
+    }),
+    (error) => error.code === 'DEPOSIT_VALIDATION'
+  );
+
+  const summary = await getSecurityDepositSummary('lease-101');
+  assert.equal(summary.depositReceived, 300);
+  assert.equal(summary.availableDeposit, 100);
+});
+

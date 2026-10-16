@@ -1327,3 +1327,252 @@ export const recordSecurityDepositTransaction = async (leaseId, payload = {}, re
   saveData(state);
   return transaction;
 };
+
+// SECURITY_DEPOSIT_EDIT_DELETE_FUNCTIONS
+const validateDepositEditPayload = (payload = {}) => {
+  const type = String(
+    payload.transactionType ?? payload.transaction_type ?? payload.type ?? ''
+  ).trim().toLowerCase();
+
+  if (!['payment', 'deduction', 'refund'].includes(type)) {
+    throw Object.assign(
+      new Error('Transaction type must be payment, deduction, or refund.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  const amount = Number(payload.amount);
+  const roundedAmount = Math.round((amount + Number.EPSILON) * 100) / 100;
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    amount > 1000000000 ||
+    amount !== roundedAmount
+  ) {
+    throw Object.assign(
+      new Error('Enter a valid transaction amount with no more than two decimal places.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  const notes = String(payload.notes ?? '').trim();
+  if (notes.length > 1000) {
+    throw Object.assign(
+      new Error('Notes cannot exceed 1000 characters.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  const dateInput =
+    payload.transactionDate ??
+    payload.transaction_date ??
+    new Date().toISOString();
+
+  const transactionDate = new Date(dateInput);
+  if (!dateInput || Number.isNaN(transactionDate.getTime())) {
+    throw Object.assign(
+      new Error('Enter a valid transaction date.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  return {
+    type,
+    amount: roundedAmount,
+    notes,
+    transactionDate: transactionDate.toISOString(),
+  };
+};
+
+const mapDepositEditDatabaseError = (error) => {
+  const message = String(error?.message || error || 'Database operation failed.');
+
+  if (/lease not found|security deposit transaction not found/i.test(message)) {
+    return Object.assign(new Error(message), { code: 'NOT_FOUND' });
+  }
+
+  if (/invalid|exceeds|must be positive|transaction type|amount|notes|date|available deposit|agreed deposit/i.test(message)) {
+    return Object.assign(new Error(message), { code: 'DEPOSIT_VALIDATION' });
+  }
+
+  return error instanceof Error ? error : new Error(message);
+};
+
+export const updateSecurityDepositTransaction = async (
+  leaseId,
+  transactionId,
+  payload = {}
+) => {
+  const input = validateDepositEditPayload(payload);
+
+  if (hasSupabase) {
+    if (!supabase) {
+      throw Object.assign(
+        new Error('Supabase service-role configuration is required for deposit edits.'),
+        { code: 'DEPOSIT_CONFIGURATION' }
+      );
+    }
+
+    const { data, error } = await supabase.rpc(
+      'update_security_deposit_transaction',
+      {
+        p_lease_id: leaseId,
+        p_transaction_id: transactionId,
+        p_transaction_type: input.type,
+        p_amount: input.amount,
+        p_transaction_date: input.transactionDate,
+        p_notes: input.notes,
+      }
+    );
+
+    if (error) throw mapDepositEditDatabaseError(error);
+    return data;
+  }
+
+  const state = loadData();
+  const lease = (state.leases || []).find(
+    (item) => String(item.id) === String(leaseId)
+  );
+
+  if (!lease) {
+    throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+  }
+
+  const transactions = state.securityDepositTransactions || [];
+  const index = transactions.findIndex(
+    (item) =>
+      String(item.id) === String(transactionId) &&
+      String(item.lease_id) === String(leaseId)
+  );
+
+  if (index < 0) {
+    throw Object.assign(
+      new Error('Security deposit transaction not found.'),
+      { code: 'NOT_FOUND' }
+    );
+  }
+
+  const existing = transactions[index];
+  const others = transactions.filter(
+    (item) =>
+      String(item.lease_id) === String(leaseId) &&
+      String(item.id) !== String(transactionId)
+  );
+  const summary = summarizeSecurityDeposit(lease, others);
+
+  if (
+    input.type === 'payment' &&
+    summary.totalDeductions + summary.totalRefunded >
+      summary.depositReceived + input.amount
+  ) {
+    throw Object.assign(
+      new Error('Cannot reduce this payment because deductions or refunds would exceed the received deposit.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  if (
+    input.type === 'payment' &&
+    summary.depositReceived + input.amount > summary.agreedDeposit
+  ) {
+    throw Object.assign(
+      new Error('Payment exceeds the remaining agreed deposit.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  if (
+    ['deduction', 'refund'].includes(input.type) &&
+    input.amount + summary.totalDeductions + summary.totalRefunded >
+      summary.depositReceived
+  ) {
+    throw Object.assign(
+      new Error('Transaction exceeds the available deposit.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  const updated = {
+    ...existing,
+    transaction_type: input.type,
+    amount: input.amount,
+    transaction_date: input.transactionDate,
+    notes: input.notes,
+  };
+
+  transactions[index] = updated;
+  state.securityDepositTransactions = transactions;
+  saveData(state);
+  return updated;
+};
+
+export const deleteSecurityDepositTransaction = async (
+  leaseId,
+  transactionId
+) => {
+  if (hasSupabase) {
+    if (!supabase) {
+      throw Object.assign(
+        new Error('Supabase service-role configuration is required for deposit deletions.'),
+        { code: 'DEPOSIT_CONFIGURATION' }
+      );
+    }
+
+    const { data, error } = await supabase.rpc(
+      'delete_security_deposit_transaction',
+      {
+        p_lease_id: leaseId,
+        p_transaction_id: transactionId,
+      }
+    );
+
+    if (error) throw mapDepositEditDatabaseError(error);
+    return data;
+  }
+
+  const state = loadData();
+  const lease = (state.leases || []).find(
+    (item) => String(item.id) === String(leaseId)
+  );
+
+  if (!lease) {
+    throw Object.assign(new Error('Lease not found.'), { code: 'NOT_FOUND' });
+  }
+
+  const transactions = state.securityDepositTransactions || [];
+  const existing = transactions.find(
+    (item) =>
+      String(item.id) === String(transactionId) &&
+      String(item.lease_id) === String(leaseId)
+  );
+
+  if (!existing) {
+    throw Object.assign(
+      new Error('Security deposit transaction not found.'),
+      { code: 'NOT_FOUND' }
+    );
+  }
+
+  const remaining = transactions.filter(
+    (item) => String(item.id) !== String(transactionId)
+  );
+  const leaseTransactions = remaining.filter(
+    (item) => String(item.lease_id) === String(leaseId)
+  );
+  const summary = summarizeSecurityDeposit(lease, leaseTransactions);
+
+  if (
+    summary.totalDeductions + summary.totalRefunded >
+    summary.depositReceived
+  ) {
+    throw Object.assign(
+      new Error('Cannot delete this transaction because deductions or refunds would exceed the received deposit.'),
+      { code: 'DEPOSIT_VALIDATION' }
+    );
+  }
+
+  state.securityDepositTransactions = remaining;
+  saveData(state);
+  return existing;
+};

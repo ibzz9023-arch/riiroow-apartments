@@ -201,6 +201,7 @@ const [user, setUser] = useState(null);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
   const [depositOverview, setDepositOverview] = useState({ agreedDeposit: 0, depositReceived: 0, outstandingDeposit: 0, availableDeposit: 0, transactions: [], loaded: false });
   const [selectedDepositLeaseId, setSelectedDepositLeaseId] = useState('');
+  const [editingDepositTransactionId, setEditingDepositTransactionId] = useState(null);
   const [depositSummary, setDepositSummary] = useState(null);
   const [depositLoading, setDepositLoading] = useState(false);
   const [depositForm, setDepositForm] = useState({
@@ -252,54 +253,134 @@ const [user, setUser] = useState(null);
     }
   };
 
+  const cancelEditDepositTransaction = () => {
+    setEditingDepositTransactionId(null);
+    setDepositForm({
+      type: 'payment',
+      amount: '',
+      transactionDate: new Date().toISOString().slice(0, 10),
+      notes: '',
+    });
+    setError('');
+  };
+
+  const beginEditDepositTransaction = (transaction) => {
+    setEditingDepositTransactionId(transaction.id);
+    setDepositForm({
+      type: String(
+        transaction.transaction_type ??
+        transaction.transactionType ??
+        transaction.type ??
+        'payment'
+      ).toLowerCase(),
+      amount: String(transaction.amount ?? ''),
+      transactionDate: String(
+        transaction.transaction_date ??
+        transaction.transactionDate ??
+        transaction.created_at ??
+        new Date().toISOString()
+      ).slice(0, 10),
+      notes: transaction.notes ?? '',
+    });
+    setError('');
+    setInfoMessage('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteDepositTransaction = async (transaction) => {
+    if (!selectedDepositLeaseId || !transaction?.id) {
+      setError('Select a lease and a valid deposit transaction.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Delete this security-deposit transaction? This action cannot be undone.'
+    );
+
+    if (!confirmed) return;
+
+    setDepositLoading(true);
+    setError('');
+
+    try {
+      await requestJson(
+        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits/${encodeURIComponent(transaction.id)}`,
+        { method: 'DELETE' }
+      );
+
+      if (editingDepositTransactionId === transaction.id) {
+        cancelEditDepositTransaction();
+      }
+
+      setInfoMessage('Security-deposit transaction deleted.');
+      await loadSecurityDeposit(selectedDepositLeaseId);
+    } catch (err) {
+      setError(err.message || 'Unable to delete the security-deposit transaction.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
   const handleDepositSubmit = async (event) => {
     event.preventDefault();
 
     if (!selectedDepositLeaseId) {
-      setError('Please select a lease first.');
+      setError('Select a lease first.');
       return;
     }
 
     const amount = Number(depositForm.amount);
+
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter an amount greater than zero.');
       return;
     }
 
-    setDepositLoading(true);
     setError('');
-    setInfoMessage('');
+    setDepositLoading(true);
+
+    const editing = Boolean(editingDepositTransactionId);
+    const endpoint = `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`;
+    const target = editing
+      ? `${endpoint}/${encodeURIComponent(editingDepositTransactionId)}`
+      : endpoint;
 
     try {
-      await requestJson(
-        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`,
-        {
-          method: 'POST',
-          body: {
-            type: depositForm.type,
-            amount,
-            transactionDate: depositForm.transactionDate,
-            notes: depositForm.notes,
-          },
-        }
+      await requestJson(target, {
+        method: editing ? 'PATCH' : 'POST',
+        body: {
+          type: depositForm.type,
+          transactionType: depositForm.type,
+          transaction_type: depositForm.type,
+          amount,
+          transactionDate: depositForm.transactionDate,
+          transaction_date: depositForm.transactionDate,
+          notes: depositForm.notes,
+        },
+      });
+
+      setInfoMessage(
+        editing
+          ? 'Security-deposit transaction updated.'
+          : 'Security-deposit transaction recorded.'
       );
 
-      const summary = await requestJson(
-        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`
-      );
-      setDepositSummary(summary);
+      setEditingDepositTransactionId(null);
       setDepositForm({
         type: 'payment',
         amount: '',
-        transactionDate: todayIso(),
+        transactionDate: new Date().toISOString().slice(0, 10),
         notes: '',
       });
-      setInfoMessage('Security-deposit transaction recorded successfully.');
 
-      // Refresh dashboard totals without changing existing records.
-      await fetchDashboard();
+      await loadSecurityDeposit(selectedDepositLeaseId);
     } catch (err) {
-      setError(err.message || 'Unable to record the security-deposit transaction.');
+      setError(
+        err.message ||
+        (editing
+          ? 'Unable to update the security-deposit transaction.'
+          : 'Unable to record the security-deposit transaction.')
+      );
     } finally {
       setDepositLoading(false);
     }
@@ -2333,7 +2414,7 @@ const handleLogin = async (event) => {
 
                 {(role === 'admin' || role === 'manager') && (
                   <form className="crud-form" onSubmit={handleDepositSubmit}>
-                    <h3>Record a Deposit Transaction</h3>
+                    <h3>{editingDepositTransactionId ? 'Edit Deposit Transaction' : 'Record a Deposit Transaction'}</h3>
 
                     <div className="form-grid">
                       <label>
@@ -2409,8 +2490,18 @@ const handleLogin = async (event) => {
                         className="small-btn"
                         disabled={depositLoading}
                       >
-                        Record Transaction
+                        {editingDepositTransactionId ? 'Save Changes' : 'Record Transaction'}
                       </button>
+                      {editingDepositTransactionId && (
+                        <button
+                          type="button"
+                          className="small-btn"
+                          disabled={depositLoading}
+                          onClick={cancelEditDepositTransaction}
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </form>
                 )}
@@ -2424,12 +2515,13 @@ const handleLogin = async (event) => {
                         <th>Amount</th>
                         <th>Notes</th>
                         <th>Recorded by</th>
+                        {(role === 'admin' || role === 'manager') && <th>Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {(depositSummary.transactions || []).length === 0 ? (
                         <tr>
-                          <td colSpan="5">No security-deposit transactions recorded.</td>
+                          <td colSpan={(role === 'admin' || role === 'manager') ? 6 : 5}>No security-deposit transactions recorded.</td>
                         </tr>
                       ) : (
                         depositSummary.transactions.map((transaction) => (
@@ -2451,7 +2543,15 @@ const handleLogin = async (event) => {
                             </td>
                             <td>{formatCurrency(transaction.amount)}</td>
                             <td>{transaction.notes || 'â€”'}</td>
-                            <td>{transaction.recorded_by ?? transaction.recordedBy ?? 'â€”'}</td>
+                            <td>{transaction.recorded_by ?? transaction.recordedBy ?? '—'}</td>
+                            {(role === 'admin' || role === 'manager') && (
+                              <td>
+                                <button type="button" className="small-btn" disabled={depositLoading}
+                                  onClick={() => beginEditDepositTransaction(transaction)}>Edit</button>
+                                <button type="button" className="small-btn" disabled={depositLoading}
+                                  onClick={() => handleDeleteDepositTransaction(transaction)}>Delete</button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}
