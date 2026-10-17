@@ -212,6 +212,7 @@ const [user, setUser] = useState(null);
   });
 
   const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
+  const [qrMaintenanceSuccess, setQrMaintenanceSuccess] = useState(false);
   const [qrMaintenanceSubmitting, setQrMaintenanceSubmitting] = useState(false);
   const [qrPaymentVerificationOpen, setQrPaymentVerificationOpen] = useState(false);
   const [qrPaymentPin, setQrPaymentPin] = useState('');
@@ -686,6 +687,7 @@ const printUnitQRCodes = async () => {
       setInfoMessage(
         response.message || 'Maintenance request submitted successfully.'
       );
+      setQrMaintenanceSuccess(true);
 
       setQrMaintenanceForm({
         title: '',
@@ -1904,7 +1906,7 @@ const handleLogin = async (event) => {
             <button
               type="button"
               className="primary-btn"
-              onClick={() => setQrMaintenanceOpen(true)}
+              onClick={() => { setQrMaintenanceSuccess(false); setQrMaintenanceOpen(true); }}
             >
               Maintenance Request
             </button>
@@ -1922,6 +1924,19 @@ const handleLogin = async (event) => {
               Tenant PIN Verification
             </button>
           </div>
+
+          {qrMaintenanceSuccess ? (
+            <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
+              <div aria-hidden="true" style={{ width: '88px', height: '88px', margin: '0 auto 16px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '60px', fontWeight: 700 }}>
+                ✓
+              </div>
+              <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
+              <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
+              <button type="button" className="primary-btn" onClick={() => setQrMaintenanceSuccess(false)}>
+                Done
+              </button>
+            </section>
+          ) : null}
 
           {qrPaymentVerificationOpen ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
