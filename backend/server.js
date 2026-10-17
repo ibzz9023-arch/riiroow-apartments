@@ -681,6 +681,53 @@ app.post('/api/public/qr/:unitNumber/maintenance', requireTenantQrSession, parse
   }
 });
 
+app.get('/api/maintenance/:id/evidence', requireRoles('Admin', 'Manager', 'Maintenance'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    if (!supabaseServiceRole) {
+      return res.status(503).json({ error: 'Maintenance evidence storage is not configured on the server.' });
+    }
+
+    const { data: request, error: requestError } = await supabaseServiceRole
+      .from('maintenance_requests')
+      .select('id')
+      .eq('id', req.params.id)
+      .maybeSingle();
+
+    if (requestError) throw requestError;
+    if (!request) return res.status(404).json({ error: 'Maintenance request not found.' });
+
+    const { data: rows, error: evidenceError } = await supabaseServiceRole
+      .from('maintenance_evidence')
+      .select('id, file_type, original_name, mime_type, file_size, storage_path')
+      .eq('maintenance_request_id', request.id);
+
+    if (evidenceError) throw evidenceError;
+
+    const evidence = await Promise.all((rows || []).map(async (row) => {
+      const { data, error } = await supabaseServiceRole.storage
+        .from(QR_MEDIA_BUCKET)
+        .createSignedUrl(row.storage_path, 600);
+
+      if (error) throw error;
+
+      return {
+        id: row.id,
+        fileType: row.file_type,
+        originalName: row.original_name,
+        mimeType: row.mime_type,
+        fileSize: row.file_size,
+        url: data.signedUrl,
+      };
+    }));
+
+    return res.json({ evidence });
+  } catch (error) {
+    console.error('Maintenance evidence fetch error:', error);
+    return res.status(500).json({ error: 'Unable to load maintenance attachments.' });
+  }
+});
 app.post('/api/maintenance', requireRoles('Admin', 'Manager', 'Maintenance'), async (req, res) => {
   try {
     const item = await createEntity('maintenance_requests', {
