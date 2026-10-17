@@ -359,7 +359,76 @@ const [user, setUser] = useState(null);
 
     return data;
   };
-  const printUnitQRCodes = async () => {
+    const viewMaintenanceEvidence = async (item) => {
+    const popup = window.open('', '_blank');
+
+    if (!popup) {
+      setError('Please allow pop-ups to view maintenance attachments.');
+      return;
+    }
+
+    popup.document.title = 'Maintenance attachments';
+    popup.document.body.innerHTML =
+      '<p style="font-family:Arial;padding:24px">Loading attachments...</p>';
+
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[char]);
+
+    try {
+      const result = await requestJson(
+        `/api/maintenance/${encodeURIComponent(item.id)}/evidence`
+      );
+      const files = result.evidence || [];
+
+      if (!files.length) {
+        popup.document.body.innerHTML =
+          '<p style="font-family:Arial;padding:24px">No attachments were found for this maintenance request.</p>';
+        return;
+      }
+
+      const cards = files.map((file) => {
+        const name = escapeHtml(file.originalName || file.fileType || 'Attachment');
+        const url = escapeHtml(file.url || '');
+        const type = String(file.mimeType || '').toLowerCase();
+
+        let media = '';
+
+        if (type.startsWith('image/')) {
+          media = `<img src="${url}" alt="${name}" style="max-width:100%;max-height:70vh;object-fit:contain">`;
+        } else if (type.startsWith('audio/')) {
+          media = `<audio controls preload="metadata" src="${url}" style="width:100%"></audio>`;
+        } else if (type.startsWith('video/')) {
+          media = `<video controls preload="metadata" src="${url}" style="max-width:100%;max-height:70vh"></video>`;
+        } else {
+          media = `<a href="${url}" target="_blank" rel="noopener noreferrer">Open attachment</a>`;
+        }
+
+        const size = Number(file.fileSize) > 0
+          ? `<p>${(Number(file.fileSize) / 1024).toFixed(1)} KB</p>`
+          : '';
+
+        return `<section style="border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;overflow-wrap:anywhere"><h3>${name}</h3>${media}${size}</section>`;
+      }).join('');
+
+      popup.document.open();
+      popup.document.write(
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title></head><body style="font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px"><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(item.title || item.description || item.id)}</p>${cards}<p>Secure attachment links expire after 10 minutes.</p></body></html>`
+      );
+      popup.document.close();
+    } catch (err) {
+      popup.document.body.innerHTML = '';
+      const message = popup.document.createElement('p');
+      message.style.cssText = 'font-family:Arial;padding:24px';
+      message.textContent = err.message || 'Unable to load maintenance attachments.';
+      popup.document.body.appendChild(message);
+    }
+  };
+const printUnitQRCodes = async () => {
     if (!units.length) {
       window.alert('No units are available to print QR codes.');
       return;
@@ -3479,6 +3548,7 @@ const handleLogin = async (event) => {
                                 {String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'resolved' && (
                                   <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Completed')}>Complete</button>
                                 )}
+                                <button className="small-btn" onClick={() => viewMaintenanceEvidence(item)}>View Attachments</button>
                                 <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
                               </td>
