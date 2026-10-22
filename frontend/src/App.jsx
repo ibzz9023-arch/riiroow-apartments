@@ -3787,7 +3787,8 @@ const handleLogin = async (event) => {
                         <tbody>
                           {managerPaymentNotifications.map((notification) => {
                             const status = notification.status || 'Pending Review';
-                            const pending = /pending|awaiting/i.test(String(status));
+                            const awaitingRentRecording = /verified\s*-\s*awaiting rent recording/i.test(String(status));
+                            const pending = /^pending\b/i.test(String(status));
                             const busy = paymentReviewBusyId === String(notification.id);
                             return (
                               <tr key={notification.id}>
@@ -3797,29 +3798,39 @@ const handleLogin = async (event) => {
                                 <td>{formatCurrency(notification.amount)}</td>
                                 <td>{notification.payment_method || '—'}</td>
                                 <td>{notification.transaction_reference || '—'}</td>
-                                <td><span className={`tag ${getStatusClass(status)}`}>{status}</span></td>
                                 <td>
-                                  {pending ? (
-                                    <textarea
-                                      aria-label={`Review note for payment notification ${notification.id}`}
-                                      rows="2"
-                                      maxLength="1000"
-                                      value={paymentReviewNote[notification.id] || ''}
-                                      onChange={(event) => setPaymentReviewNote((previous) => ({ ...previous, [notification.id]: event.target.value }))}
-                                    />
-                                  ) : (notification.review_note || '—')}
-                                </td>
-                                <td>
-                                  {pending ? (
-                                    <div className="form-actions">
-                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedManual')}>Verify manually</button>
-                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedAuto')}>Verify and record</button>
-                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'MarkManuallyRecorded')}>Already recorded</button>
-                                      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'Rejected')}>Reject</button>
-                                    </div>
-                                  ) : 'Reviewed'}
-                                  {busy ? <p>Saving review...</p> : null}
-                                </td>
+  <span className={`tag ${getStatusClass(status)}`}>{status}</span>
+</td>
+<td>
+  {pending ? (
+    <textarea
+      aria-label={`Review note for payment notification ${notification.id}`}
+      rows="2"
+      maxLength="1000"
+      value={paymentReviewNote[notification.id] || ''}
+      onChange={(event) => setPaymentReviewNote((previous) => ({
+        ...previous,
+        [notification.id]: event.target.value,
+      }))}
+    />
+  ) : (
+    notification.review_note || '—'
+  )}
+</td>
+<td>
+  {pending ? (
+    <div className="form-actions">
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedManual')}>Verify manually</button>
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedAuto')}>Verify and record</button>
+      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'Rejected')}>Reject</button>
+    </div>
+  ) : awaitingRentRecording ? (
+    <div className="form-actions">
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'MarkManuallyRecorded')}>Already recorded</button>
+    </div>
+  ) : 'Reviewed'}
+  {busy ? <p>Saving review...</p> : null}
+</td>
                               </tr>
                             );
                           })}
