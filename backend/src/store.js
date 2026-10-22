@@ -60,9 +60,19 @@ const getPaidAmount = (payment = {}) => {
 
 export const normalizePaymentRecord = (payment = {}) => {
   const amount = Math.max(0, normalizeNumber(payment.amount));
-  const paidAmount = Math.max(0, Math.min(getPaidAmount(payment), amount));
+  const verificationStatus = normalizePaymentValue(payment.verification_status).toLowerCase();
+  const paymentNotVerified = ['pending verification', 'rejected'].includes(verificationStatus);
+  const paidAmount = paymentNotVerified
+    ? 0
+    : Math.max(0, Math.min(getPaidAmount(payment), amount));
   const remainingAmount = Math.max(0, amount - paidAmount);
-  const status = calculatePaymentStatus({ ...payment, amount, paidAmount });
+  const status = calculatePaymentStatus({
+    ...payment,
+    status: paymentNotVerified ? '' : payment.status,
+    paidDate: paymentNotVerified ? null : payment.paidDate ?? payment.paid_date,
+    amount,
+    paidAmount,
+  });
 
   return {
     ...payment,

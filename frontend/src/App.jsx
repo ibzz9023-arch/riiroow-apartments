@@ -200,6 +200,16 @@ const [user, setUser] = useState(null);
   const [leaseForm, setLeaseForm] = useState(emptyLeaseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
+  const [managerPaymentNotifications, setManagerPaymentNotifications] = useState([]);
+  const [paymentNotificationsLoading, setPaymentNotificationsLoading] = useState(false);
+  const [paymentNotificationsError, setPaymentNotificationsError] = useState('');
+  const [paymentReviewBusyId, setPaymentReviewBusyId] = useState('');
+  const [paymentReviewNote, setPaymentReviewNote] = useState({});
+  const [managerMoveOutRequests, setManagerMoveOutRequests] = useState([]);
+  const [moveOutRequestsLoading, setMoveOutRequestsLoading] = useState(false);
+  const [moveOutRequestsError, setMoveOutRequestsError] = useState('');
+  const [moveOutReviewBusyId, setMoveOutReviewBusyId] = useState('');
+  const [moveOutReviewNote, setMoveOutReviewNote] = useState({});
   const [depositOverview, setDepositOverview] = useState({ agreedDeposit: 0, depositReceived: 0, outstandingDeposit: 0, availableDeposit: 0, transactions: [], loaded: false });
   const [selectedDepositLeaseId, setSelectedDepositLeaseId] = useState('');
   const [depositSummary, setDepositSummary] = useState(null);
@@ -219,6 +229,23 @@ const [user, setUser] = useState(null);
   const [qrPaymentPinError, setQrPaymentPinError] = useState('');
   const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
   const [qrTenantToken, setQrTenantToken] = useState('');
+  const [qrPaymentNotificationForm, setQrPaymentNotificationForm] = useState({
+    amount: '',
+    paymentMethod: 'Mobile Money',
+    transactionReference: '',
+  });
+  const [qrPaymentNotificationSubmitting, setQrPaymentNotificationSubmitting] = useState(false);
+  const [qrPaymentNotificationError, setQrPaymentNotificationError] = useState('');
+  const [qrPaymentNotificationSuccess, setQrPaymentNotificationSuccess] = useState(false);
+  const [qrPaymentIdempotencyKey, setQrPaymentIdempotencyKey] = useState('');
+
+  const [qrMoveOutForm, setQrMoveOutForm] = useState({
+    requestedMoveOutDate: '',
+    reason: '',
+  });
+  const [qrMoveOutSubmitting, setQrMoveOutSubmitting] = useState(false);
+  const [qrMoveOutError, setQrMoveOutError] = useState('');
+  const [qrMoveOutSuccess, setQrMoveOutSuccess] = useState(false);
   const [qrMaintenanceForm, setQrMaintenanceForm] = useState({
     title: '',
     description: '',
@@ -757,6 +784,105 @@ const printUnitQRCodes = async () => {
     }
   };
 
+  const handleQrPaymentNotificationSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setQrPaymentNotificationError('Verify your tenant PIN before submitting.');
+      return;
+    }
+
+    const amount = Number(qrPaymentNotificationForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setQrPaymentNotificationError('Enter a valid payment amount greater than zero.');
+      return;
+    }
+
+    let idempotencyKey = qrPaymentIdempotencyKey;
+    if (!idempotencyKey) {
+      if (!globalThis.crypto?.randomUUID) {
+        setQrPaymentNotificationError('Secure submission is unavailable in this browser. Please try a current browser.');
+        return;
+      }
+      idempotencyKey = globalThis.crypto.randomUUID();
+      setQrPaymentIdempotencyKey(idempotencyKey);
+    }
+
+    setQrPaymentNotificationError('');
+    setQrPaymentNotificationSubmitting(true);
+
+    try {
+      await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/payment-notification`,
+        {
+          method: 'POST',
+          body: {
+            amount,
+            paymentMethod: qrPaymentNotificationForm.paymentMethod,
+            transactionReference: qrPaymentNotificationForm.transactionReference.trim(),
+          },
+          headers: {
+            Authorization: `Bearer ${qrTenantToken}`,
+            'Idempotency-Key': idempotencyKey,
+          },
+        }
+      );
+
+      setQrPaymentNotificationForm({
+        amount: '',
+        paymentMethod: 'Mobile Money',
+        transactionReference: '',
+      });
+      setQrPaymentIdempotencyKey('');
+      setQrPaymentNotificationSuccess(true);
+    } catch (requestError) {
+      setQrPaymentNotificationError(
+        requestError.message || 'Unable to submit the payment notification. Please try again.'
+      );
+    } finally {
+      setQrPaymentNotificationSubmitting(false);
+    }
+  };
+
+  const handleQrMoveOutSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setQrMoveOutError('Verify your tenant PIN before submitting.');
+      return;
+    }
+
+    if (!qrMoveOutForm.requestedMoveOutDate) {
+      setQrMoveOutError('Choose your requested move-out date.');
+      return;
+    }
+
+    setQrMoveOutError('');
+    setQrMoveOutSubmitting(true);
+
+    try {
+      await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/move-out-request`,
+        {
+          method: 'POST',
+          body: {
+            requestedMoveOutDate: qrMoveOutForm.requestedMoveOutDate,
+            reason: qrMoveOutForm.reason.trim(),
+          },
+          headers: { Authorization: `Bearer ${qrTenantToken}` },
+        }
+      );
+
+      setQrMoveOutForm({ requestedMoveOutDate: '', reason: '' });
+      setQrMoveOutSuccess(true);
+    } catch (requestError) {
+      setQrMoveOutError(
+        requestError.message || 'Unable to submit your move-out request. Please try again.'
+      );
+    } finally {
+      setQrMoveOutSubmitting(false);
+    }
+  };
   const fetchDashboard = async () => {
     try {
       setLoading(true);
@@ -1983,6 +2109,166 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
+          {qrPaymentVerified && qrPaymentNotificationSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+              <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
+              <h3>Payment Notification Submitted Successfully!</h3>
+              <p>Your payment notification has been sent to the property manager for review.</p>
+              <p>This is a notification, not a receipt or confirmation that the payment has been recorded.</p>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setQrPaymentNotificationSuccess(false);
+                  setQrPaymentNotificationError('');
+                }}
+              >
+                Submit Another Notification
+              </button>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && !qrPaymentNotificationSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Notify Manager of a Payment</h3>
+              </div>
+              <p>Tell the manager about a payment you have made. The manager must review it before it is treated as verified.</p>
+              <form className="crud-form" onSubmit={handleQrPaymentNotificationSubmit}>
+                <label>
+                  Amount paid
+                  <input
+                    type="number"
+                    name="amount"
+                    min="0.01"
+                    step="0.01"
+                    required
+                    value={qrPaymentNotificationForm.amount}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                <label>
+                  Payment method
+                  <select
+                    name="paymentMethod"
+                    value={qrPaymentNotificationForm.paymentMethod}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      paymentMethod: event.target.value,
+                    }))}
+                  >
+                    <option value="Mobile Money">Mobile Money</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+
+                <label>
+                  Transaction reference <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <input
+                    type="text"
+                    name="transactionReference"
+                    maxLength={200}
+                    value={qrPaymentNotificationForm.transactionReference}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      transactionReference: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                {qrPaymentNotificationError ? (
+                  <p className="error-text" role="alert">{qrPaymentNotificationError}</p>
+                ) : null}
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="primary-btn"
+                    disabled={qrPaymentNotificationSubmitting}
+                  >
+                    {qrPaymentNotificationSubmitting ? 'Submitting...' : 'Notify Manager'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && qrMoveOutSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+              <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
+              <h3>Move-out Request Submitted Successfully!</h3>
+              <p>Your requested move-out date has been sent to the property manager for review.</p>
+              <p>Submitting a request does not terminate your lease. The manager must review your request.</p>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setQrMoveOutSuccess(false);
+                  setQrMoveOutError('');
+                }}
+              >
+                Submit Another Request
+              </button>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && !qrMoveOutSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Request to Move Out</h3>
+              </div>
+              <p>Choose your requested move-out date. Your lease remains active unless it is separately terminated.</p>
+              <form className="crud-form" onSubmit={handleQrMoveOutSubmit}>
+                <label>
+                  Requested move-out date
+                  <input
+                    type="date"
+                    name="requestedMoveOutDate"
+                    required
+                    value={qrMoveOutForm.requestedMoveOutDate}
+                    onChange={(event) => setQrMoveOutForm((current) => ({
+                      ...current,
+                      requestedMoveOutDate: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                <label>
+                  Reason <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <textarea
+                    name="reason"
+                    rows={3}
+                    maxLength={1000}
+                    value={qrMoveOutForm.reason}
+                    onChange={(event) => setQrMoveOutForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                {qrMoveOutError ? (
+                  <p className="error-text" role="alert">{qrMoveOutError}</p>
+                ) : null}
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="primary-btn"
+                    disabled={qrMoveOutSubmitting}
+                  >
+                    {qrMoveOutSubmitting ? 'Submitting...' : 'Submit Move-out Request'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
           {qrMaintenanceOpen ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
@@ -2180,11 +2466,13 @@ const handleLogin = async (event) => {
     ['leases', 'Leases'],
     ['deposits', 'Security Deposits'],
     ['payments', 'Payments'],
+    ['paymentNotifications', 'Payment Notifications'],
+    ['moveOutRequests', 'Move-out Requests'],
     ['maintenance', 'Maintenance'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
     if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return true;
@@ -2261,6 +2549,92 @@ const handleLogin = async (event) => {
   const setUnitValue = (field, value) => setUnitForm((prev) => ({ ...prev, [field]: value }));
   const setTenantValue = (field, value) => setTenantForm((prev) => ({ ...prev, [field]: value }));
   const setPaymentValue = (field, value) => setPaymentForm((prev) => ({ ...prev, [field]: value }));
+  const loadManagerPaymentNotifications = async () => {
+    setPaymentNotificationsLoading(true);
+    setPaymentNotificationsError('');
+    try {
+      const result = await requestJson('/api/manager/payment-notifications');
+      setManagerPaymentNotifications(Array.isArray(result) ? result : []);
+    } catch (err) {
+      setPaymentNotificationsError(err.message || 'Unable to load payment notifications.');
+    } finally {
+      setPaymentNotificationsLoading(false);
+    }
+  };
+
+  const handlePaymentNotificationReview = async (notification, action) => {
+    const notificationId = String(notification.id || '');
+    if (!notificationId) return;
+
+    const actionLabels = {
+      VerifiedManual: 'verify this payment manually',
+      VerifiedAuto: 'verify and record this payment automatically',
+      MarkManuallyRecorded: 'mark this payment as already recorded',
+      Rejected: 'reject this payment notification',
+    };
+    if (!window.confirm(`Are you sure you want to ${actionLabels[action] || 'review this notification'}?`)) {
+      return;
+    }
+
+    setPaymentReviewBusyId(notificationId);
+    setPaymentNotificationsError('');
+    try {
+      await requestJson(`/api/manager/payment-notifications/${encodeURIComponent(notificationId)}`, {
+        method: 'PATCH',
+        body: {
+          action,
+          reviewNote: paymentReviewNote[notificationId] || '',
+        },
+      });
+      await loadManagerPaymentNotifications();
+      setInfoMessage('Payment notification reviewed successfully.');
+    } catch (err) {
+      setPaymentNotificationsError(err.message || 'Unable to review this payment notification.');
+    } finally {
+      setPaymentReviewBusyId('');
+    }
+  };
+
+  const loadManagerMoveOutRequests = async () => {
+    setMoveOutRequestsLoading(true);
+    setMoveOutRequestsError('');
+    try {
+      const result = await requestJson('/api/manager/move-out-requests');
+      setManagerMoveOutRequests(Array.isArray(result?.requests) ? result.requests : []);
+    } catch (err) {
+      setMoveOutRequestsError(err.message || 'Unable to load move-out requests.');
+    } finally {
+      setMoveOutRequestsLoading(false);
+    }
+  };
+
+  const handleMoveOutRequestReview = async (request, action) => {
+    const requestId = String(request.id || '');
+    if (!requestId) return;
+
+    const actionLabel = action === 'Approved' ? 'approve' : 'reject';
+    if (!window.confirm(`Are you sure you want to ${actionLabel} this move-out request? This will not terminate the lease.`)) {
+      return;
+    }
+
+    setMoveOutReviewBusyId(requestId);
+    setMoveOutRequestsError('');
+    try {
+      await requestJson(`/api/manager/move-out-requests/${encodeURIComponent(requestId)}`, {
+        method: 'PATCH',
+        body: {
+          action,
+          reviewNote: moveOutReviewNote[requestId] || '',
+        },
+      });
+      await loadManagerMoveOutRequests();
+      setInfoMessage(`Move-out request ${action.toLowerCase()}. The lease has not been terminated.`);
+    } catch (err) {
+      setMoveOutRequestsError(err.message || 'Unable to review this move-out request.');
+    } finally {
+      setMoveOutReviewBusyId('');
+    }
+  };
   const setMaintenanceValue = (field, value) => setMaintenanceForm((prev) => ({ ...prev, [field]: value }));
 
   return (
@@ -2279,7 +2653,11 @@ const handleLogin = async (event) => {
             <button
               key={key}
               className={activeTab === key ? 'nav-btn active' : 'nav-btn'}
-              onClick={() => setActiveTab(key)}
+              onClick={() => {
+                setActiveTab(key);
+                if (key === 'paymentNotifications') void loadManagerPaymentNotifications();
+                if (key === 'moveOutRequests') void loadManagerMoveOutRequests();
+              }}
             >
               {label}
             </button>
@@ -3371,6 +3749,165 @@ const handleLogin = async (event) => {
               </div>
             ) : null}
 
+            {activeTab === 'paymentNotifications' ? (
+              <div className="stacked-sections">
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h2>Payment Notifications</h2>
+                      <p>Review tenant-submitted payment notifications. A notification is not proof that money has been received.</p>
+                    </div>
+                    <button type="button" className="secondary-btn" onClick={loadManagerPaymentNotifications} disabled={paymentNotificationsLoading}>
+                      {paymentNotificationsLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {paymentNotificationsError ? <p className="error-text" role="alert">{paymentNotificationsError}</p> : null}
+
+                  {paymentNotificationsLoading ? (
+                    <p>Loading payment notifications...</p>
+                  ) : managerPaymentNotifications.length === 0 ? (
+                    <EmptyState title="No payment notifications" message="Tenant payment notifications will appear here when submitted." />
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Submitted</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Amount</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                            <th>Status</th>
+                            <th>Review note</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerPaymentNotifications.map((notification) => {
+                            const status = notification.status || 'Pending Review';
+                            const pending = /pending|awaiting/i.test(String(status));
+                            const busy = paymentReviewBusyId === String(notification.id);
+                            return (
+                              <tr key={notification.id}>
+                                <td>{formatDateTime(notification.submitted_at || notification.created_at)}</td>
+                                <td>{notification.tenant_name || '—'}</td>
+                                <td>{notification.unit_number ?? '—'}</td>
+                                <td>{formatCurrency(notification.amount)}</td>
+                                <td>{notification.payment_method || '—'}</td>
+                                <td>{notification.transaction_reference || '—'}</td>
+                                <td><span className={`tag ${getStatusClass(status)}`}>{status}</span></td>
+                                <td>
+                                  {pending ? (
+                                    <textarea
+                                      aria-label={`Review note for payment notification ${notification.id}`}
+                                      rows="2"
+                                      maxLength="1000"
+                                      value={paymentReviewNote[notification.id] || ''}
+                                      onChange={(event) => setPaymentReviewNote((previous) => ({ ...previous, [notification.id]: event.target.value }))}
+                                    />
+                                  ) : (notification.review_note || '—')}
+                                </td>
+                                <td>
+                                  {pending ? (
+                                    <div className="form-actions">
+                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedManual')}>Verify manually</button>
+                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedAuto')}>Verify and record</button>
+                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'MarkManuallyRecorded')}>Already recorded</button>
+                                      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'Rejected')}>Reject</button>
+                                    </div>
+                                  ) : 'Reviewed'}
+                                  {busy ? <p>Saving review...</p> : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
+
+            {activeTab === 'moveOutRequests' ? (
+              <div className="stacked-sections">
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h2>Move-out Requests</h2>
+                      <p>Review requested move-out dates. Approving a request does not automatically terminate the lease.</p>
+                    </div>
+                    <button type="button" className="secondary-btn" onClick={loadManagerMoveOutRequests} disabled={moveOutRequestsLoading}>
+                      {moveOutRequestsLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {moveOutRequestsError ? <p className="error-text" role="alert">{moveOutRequestsError}</p> : null}
+
+                  {moveOutRequestsLoading ? (
+                    <p>Loading move-out requests...</p>
+                  ) : managerMoveOutRequests.length === 0 ? (
+                    <EmptyState title="No move-out requests" message="Tenant move-out requests will appear here when submitted." />
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Submitted</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Requested date</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Review note</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerMoveOutRequests.map((request) => {
+                            const status = request.status || 'Pending Review';
+                            const pending = /pending/i.test(String(status));
+                            const busy = moveOutReviewBusyId === String(request.id);
+                            return (
+                              <tr key={request.id}>
+                                <td>{formatDateTime(request.submitted_at)}</td>
+                                <td>{request.tenant_name || request.tenant_id || '—'}</td>
+                                <td>{request.unit_number ?? '—'}</td>
+                                <td>{request.requested_move_out_date || '—'}</td>
+                                <td>{request.reason || '—'}</td>
+                                <td><span className={`tag ${getStatusClass(status)}`}>{status}</span></td>
+                                <td>
+                                  {pending ? (
+                                    <textarea
+                                      aria-label={`Review note for move-out request ${request.id}`}
+                                      rows="2"
+                                      maxLength="1000"
+                                      value={moveOutReviewNote[request.id] || ''}
+                                      onChange={(event) => setMoveOutReviewNote((previous) => ({ ...previous, [request.id]: event.target.value }))}
+                                    />
+                                  ) : (request.review_note || '—')}
+                                </td>
+                                <td>
+                                  {pending ? (
+                                    <div className="form-actions">
+                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handleMoveOutRequestReview(request, 'Approved')}>Approve</button>
+                                      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handleMoveOutRequestReview(request, 'Rejected')}>Reject</button>
+                                    </div>
+                                  ) : 'Reviewed'}
+                                  {busy ? <p>Saving review...</p> : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
             {activeTab === 'maintenance' ? (
               <div className="stacked-sections">
                 <section className="panel">

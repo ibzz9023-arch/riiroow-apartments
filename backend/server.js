@@ -6,6 +6,16 @@ import {
   verifyTenantPin,
   requireTenantQrSession,
 } from './src/tenantQrAuth.js';
+import {
+  submitTenantPaymentNotification,
+  listManagerPaymentNotifications,
+  reviewPaymentNotification,
+} from './src/paymentNotifications.js';
+import {
+  submitTenantMoveOutRequest,
+  listManagerMoveOutRequests,
+  reviewMoveOutRequest,
+} from './src/moveOutRequests.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -498,6 +508,132 @@ app.delete('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), 
   }
 });
 
+// Tenant QR: submit a payment notification for manager review.
+app.post(
+  '/api/public/qr/:unitNumber/payment-notification',
+  requireTenantQrSession,
+  async (req, res) => {
+    try {
+      const result = await submitTenantPaymentNotification({
+        access: req.tenantQrAccess,
+        requestedUnitNumber: req.params.unitNumber,
+        body: req.body,
+        idempotencyKey:
+          req.get('Idempotency-Key') ||
+          req.body?.idempotencyKey ||
+          crypto.randomUUID(),
+      });
+
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('Submit payment notification error:', error);
+      return res.status(500).json({
+        error: 'Unable to submit the payment notification.',
+      });
+    }
+  }
+);
+
+// Manager: list tenant payment notifications.
+app.get(
+  '/api/manager/payment-notifications',
+  requireRoles('Admin', 'Manager'),
+  async (req, res) => {
+    try {
+      const notifications = await listManagerPaymentNotifications();
+      return res.json(notifications);
+    } catch (error) {
+      console.error('List payment notifications error:', error);
+      return res.status(500).json({
+        error: 'Unable to load payment notifications.',
+      });
+    }
+  }
+);
+
+// Manager: review a tenant payment notification.
+app.patch(
+  '/api/manager/payment-notifications/:id',
+  requireRoles('Admin', 'Manager'),
+  async (req, res) => {
+    try {
+      const result = await reviewPaymentNotification({
+        notificationId: req.params.id,
+        action: req.body?.action,
+        reviewNote: req.body?.reviewNote,
+        reviewedBy: null,
+      });
+
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('Review payment notification error:', error);
+      return res.status(500).json({
+        error: 'Unable to review the payment notification.',
+      });
+    }
+  }
+);
+// Tenant QR: submit a move-out request for manager review.
+app.post(
+  '/api/public/qr/:unitNumber/move-out-request',
+  requireTenantQrSession,
+  async (req, res) => {
+    try {
+      const result = await submitTenantMoveOutRequest({
+        access: req.tenantQrAccess,
+        requestedUnitNumber: req.params.unitNumber,
+        body: req.body,
+      });
+
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('Submit move-out request error:', error);
+      return res.status(500).json({
+        error: 'Unable to submit the move-out request.',
+      });
+    }
+  }
+);
+
+// Manager: list tenant move-out requests.
+app.get(
+  '/api/manager/move-out-requests',
+  requireRoles('Admin', 'Manager'),
+  async (req, res) => {
+    try {
+      const result = await listManagerMoveOutRequests();
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('List move-out requests error:', error);
+      return res.status(500).json({
+        error: 'Unable to load move-out requests.',
+      });
+    }
+  }
+);
+
+// Manager: approve or reject a move-out request without terminating its lease.
+app.patch(
+  '/api/manager/move-out-requests/:id',
+  requireRoles('Admin', 'Manager'),
+  async (req, res) => {
+    try {
+      const result = await reviewMoveOutRequest({
+        requestId: req.params.id,
+        action: req.body?.action,
+        reviewNote: req.body?.reviewNote,
+        reviewedBy: null,
+      });
+
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('Review move-out request error:', error);
+      return res.status(500).json({
+        error: 'Unable to review the move-out request.',
+      });
+    }
+  }
+);
 app.post('/api/manager/leases/:leaseId/tenant-pin', requireRoles('Admin', 'Manager'), generateTenantPin);
 
 app.post('/api/public/qr/:unitNumber/verify-pin', verifyTenantPin);

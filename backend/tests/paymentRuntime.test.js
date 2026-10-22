@@ -14,7 +14,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 const { hasSupabase } = await import('../src/supabaseClient.js');
 assert.equal(hasSupabase, false, 'Runtime tests must not connect to Supabase.');
 
-const { seedState } = await import('../src/store.js');
+const { seedState, normalizePaymentRecord } = await import('../src/store.js');
 const { createPayment, updatePayment } = await import('../src/dataService.js');
 
 mkdirSync(tempDirectory, { recursive: true });
@@ -25,6 +25,46 @@ const readStore = () => JSON.parse(readFileSync(storeFilePath, 'utf8'));
 const restoreStore = (snapshot) => {
   writeFileSync(storeFilePath, JSON.stringify(snapshot, null, 2));
 };
+
+test('pending verification cannot appear as paid', () => {
+  const result = normalizePaymentRecord({
+    amount: 1200,
+    paidAmount: 1200,
+    status: 'Paid',
+    verification_status: 'Pending Verification',
+  });
+
+  assert.equal(result.paidAmount, 0);
+  assert.equal(result.remainingAmount, 1200);
+  assert.equal(result.status, 'Outstanding');
+});
+
+test('rejected payment cannot appear as paid', () => {
+  const result = normalizePaymentRecord({
+    amount: 1200,
+    paid_amount: 1200,
+    status: 'Paid',
+    verification_status: 'Rejected',
+    paid_date: '2026-10-20',
+  });
+
+  assert.equal(result.paidAmount, 0);
+  assert.equal(result.remainingAmount, 1200);
+  assert.equal(result.status, 'Outstanding');
+});
+
+test('verified partial payment retains its recorded balance', () => {
+  const result = normalizePaymentRecord({
+    amount: 1200,
+    paidAmount: 600,
+    status: 'Partially Paid',
+    verification_status: 'Verified',
+  });
+
+  assert.equal(result.paidAmount, 600);
+  assert.equal(result.remainingAmount, 600);
+  assert.equal(result.status, 'Partially Paid');
+});
 
 test('createPayment persists schema-compatible partial payment data', async (t) => {
   const original = readStore();
