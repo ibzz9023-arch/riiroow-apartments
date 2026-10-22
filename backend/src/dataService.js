@@ -71,6 +71,7 @@ const toLegacyLease = (row = {}) => ({
   id: row.id,
   tenantId: row.tenant_id ?? row.tenantId,
   unitId: row.unit_id ?? row.unitId ?? null,
+  propertyId: row.property_id ?? row.propertyId ?? null,
   unitNumber: row.unit_number ?? row.unitNumber,
   startDate: row.start_date ?? row.startDate,
   endDate: row.end_date ?? row.endDate,

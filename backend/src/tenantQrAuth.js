@@ -379,6 +379,8 @@ export const requireTenantQrSession = async (req, res, next) => {
       accessId: access.id,
       leaseId: lease.id,
       tenantId: lease.tenantId ?? lease.tenant_id ?? null,
+      unitId: lease.unitId ?? lease.unit_id ?? null,
+      propertyId: lease.propertyId ?? lease.property_id ?? null,
       unitNumber: getUnitNumber(lease),
     };
 
