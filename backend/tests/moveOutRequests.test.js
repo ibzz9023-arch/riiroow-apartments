@@ -23,6 +23,7 @@ const firstLease = {
 const tables = {
   units: [],
   leases: [],
+  tenants: [],
   move_out_requests: [],
 };
 let nextId = 1;
@@ -129,6 +130,7 @@ beforeEach(() => {
     unit_id: secondUnit.id,
     property_id: secondUnit.property_id,
   });
+  tables.tenants.length = 0;
   tables.move_out_requests.length = 0;
   nextId = 1;
   simulateUniqueRace = false;
@@ -173,11 +175,17 @@ test('unique-index race for a pending move-out request returns conflict', async 
   assert.equal(tables.move_out_requests.length, 0);
 });
 
-test('manager can list move-out requests', async () => {
+test('manager list includes tenant names instead of only tenant IDs', async () => {
+  tables.tenants.push(
+    { id: 'tenant-1', name: 'Test Tenant One' },
+    { id: 'tenant-2', name: 'Test Tenant Two' }
+  );
+
   tables.move_out_requests.push(
     {
       id: 'request-pending',
       lease_id: firstLease.id,
+      tenant_id: 'tenant-1',
       status: 'Pending Review',
       requested_move_out_date: tomorrow(),
       submitted_at: '2026-10-20T10:00:00.000Z',
@@ -185,6 +193,7 @@ test('manager can list move-out requests', async () => {
     {
       id: 'request-approved',
       lease_id: 'old-lease',
+      tenant_id: 'tenant-2',
       status: 'Approved',
       requested_move_out_date: tomorrow(),
       submitted_at: '2026-10-19T10:00:00.000Z',
@@ -195,6 +204,8 @@ test('manager can list move-out requests', async () => {
 
   assert.equal(result.status, 200);
   assert.equal(result.body.requests.length, 2);
+  assert.equal(result.body.requests[0].tenant_name, 'Test Tenant One');
+  assert.equal(result.body.requests[1].tenant_name, 'Test Tenant Two');
 });
 
 test('manager can approve a pending move-out request without terminating the lease', async () => {

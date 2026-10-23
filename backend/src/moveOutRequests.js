@@ -128,7 +128,30 @@ export const listManagerMoveOutRequests = async () => {
     return response(500, { error: 'Unable to load move-out requests.' });
   }
 
-  return response(200, { requests: data || [] });
+  const requests = data || [];
+  if (requests.length === 0) {
+    return response(200, { requests });
+  }
+
+  const { data: tenants, error: tenantsError } = await supabaseServiceRole
+    .from('tenants')
+    .select('id, name');
+
+  if (tenantsError) {
+    console.error('Unable to load tenant names for move-out requests:', tenantsError.message);
+    return response(500, { error: 'Unable to load move-out request tenant names.' });
+  }
+
+  const tenantById = new Map(
+    (tenants || []).map((tenant) => [String(tenant.id), tenant.name])
+  );
+
+  const requestsWithTenantNames = requests.map((request) => ({
+    ...request,
+    tenant_name: tenantById.get(String(request.tenant_id ?? '')) ?? null,
+  }));
+
+  return response(200, { requests: requestsWithTenantNames });
 };
 
 // Manager: approve or reject a pending move-out request.
