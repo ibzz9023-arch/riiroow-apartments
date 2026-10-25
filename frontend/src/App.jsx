@@ -419,7 +419,9 @@ const [user, setUser] = useState(null);
         return;
       }
 
-      const cards = files.map((file) => {
+      const requestLabel = item.title || item.description || item.id;
+
+      const cards = files.map((file, index) => {
         const name = escapeHtml(file.originalName || file.fileType || 'Attachment');
         const url = escapeHtml(file.url || '');
         const type = String(file.mimeType || '').toLowerCase();
@@ -440,14 +442,121 @@ const [user, setUser] = useState(null);
           ? `<p>${(Number(file.fileSize) / 1024).toFixed(1)} KB</p>`
           : '';
 
-        return `<section style="border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;overflow-wrap:anywhere"><h3>${name}</h3>${media}${size}</section>`;
+        return `<section style="border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;overflow-wrap:anywhere">
+          <h3>${name}</h3>
+          ${media}${size}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+            <button type="button" data-action="whatsapp" data-index="${index}" data-url="${url}" data-name="${name}">Share via WhatsApp</button>
+            <button type="button" data-action="email" data-url="${url}" data-name="${name}">Share via Email</button>
+            <button type="button" data-action="copy" data-url="${url}">Copy Link</button>
+            <button type="button" data-action="download" data-url="${url}" data-name="${name}">Open / Download</button>
+            <button type="button" data-action="share" data-url="${url}" data-name="${name}">Share</button>
+          </div>
+        </section>`;
       }).join('');
 
       popup.document.open();
       popup.document.write(
-        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title></head><body style="font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px"><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(item.title || item.description || item.id)}</p>${cards}<p>Secure attachment links expire after 10 minutes.</p></body></html>`
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222}button{padding:10px 12px;border:1px solid #bbb;border-radius:7px;background:#f7f7f7;cursor:pointer}button:hover{background:#eaeaea}</style></head><body><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(requestLabel)}</p><button type="button" id="share-all">Share all via WhatsApp</button>
+<button type="button" id="email-all">Email all attachments</button>${cards}<p style="color:#666">Secure attachment links expire after 10 minutes. Recipients may need access before the links expire.</p><p id="share-status" role="status" aria-live="polite"></p></body></html>`
       );
       popup.document.close();
+
+      const status = popup.document.getElementById('share-status');
+      const setStatus = (message) => {
+        if (status) status.textContent = message;
+      };
+
+      const copyText = async (text) => {
+        try {
+          await popup.navigator.clipboard.writeText(text);
+          setStatus('Link copied.');
+        } catch {
+          popup.prompt('Copy this attachment link:', text);
+        }
+      };
+
+      popup.document.getElementById('email-all')?.addEventListener('click', () => {
+        const links = files.map((file) =>
+          `${file.originalName || file.fileType || 'Attachment'}: ${file.url || ''}`
+        ).join('\n');
+
+        const subject = `Maintenance attachments: ${requestLabel}`;
+        const body = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure attachment links expire after 10 minutes.`;
+        popup.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      });
+
+      popup.document.getElementById('share-all')?.addEventListener('click', () => {
+        const links = files.map((file) =>
+          `${file.originalName || file.fileType || 'Attachment'}: ${file.url || ''}`
+        ).join('\n');
+
+        const message = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure links expire after 10 minutes.`;
+        popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+      });
+
+      popup.document.querySelectorAll('[data-action]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const url = button.getAttribute('data-url') || '';
+          const name = button.getAttribute('data-name') || 'Attachment';
+          const action = button.getAttribute('data-action');
+          const message = `Maintenance request: ${requestLabel}\nAttachment: ${name}\nSecure link (expires in 10 minutes): ${url}`;
+
+          if (!url) {
+            setStatus('No attachment link is available.');
+            return;
+          }
+
+          if (action === 'email') {
+            const subject = `Maintenance attachment: ${name}`;
+            popup.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+            return;
+          }
+
+          if (action === 'whatsapp') {
+            popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+            return;
+          }
+
+          if (action === 'copy') {
+            await copyText(url);
+            return;
+          }
+
+          if (action === 'download') {
+            const link = popup.document.createElement('a');
+            link.href = url;
+            link.download = name;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            popup.document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setStatus('The attachment was opened. Use your browser controls to save it if needed.');
+            return;
+          }
+
+          if (action === 'share') {
+            try {
+              if (typeof popup.navigator.share === 'function') {
+                await popup.navigator.share({
+                  title: name,
+                  text: `Maintenance request: ${requestLabel}`,
+                  url,
+                });
+              } else {
+                await copyText(url);
+                setStatus('Native sharing is unavailable. The attachment link was copied instead.');
+              }
+            } catch (err) {
+              if (err?.name !== 'AbortError') {
+                await copyText(url);
+                setStatus('Sharing was unavailable. You can copy the link instead.');
+              }
+            }
+          }
+        });
+      });
     } catch (err) {
       popup.document.body.innerHTML = '';
       const message = popup.document.createElement('p');
