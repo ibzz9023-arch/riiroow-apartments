@@ -360,6 +360,10 @@ app.delete('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res
     await deleteEntity('tenants', req.params.id);
     res.json({ success: true });
   } catch (error) {
+    if (error?.code === 'TENANT_HAS_HISTORY') {
+      return res.status(409).json({ error: error.message });
+    }
+
     console.error('Delete tenant error:', error);
     res.status(500).json({ error: 'Unable to delete tenant.' });
   }

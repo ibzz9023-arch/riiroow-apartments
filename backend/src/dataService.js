@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import argon2 from 'argon2';
 import { supabase, hasSupabase } from './supabaseClient.js';
-import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord } from './store.js';
+import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord, summarizeCollections } from './store.js';
 
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -320,6 +320,7 @@ export const getDashboard = async () => {
       const vacantUnits = totalUnits - occupiedUnits;
       const totalMonthlyRent = units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
       const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.paidAmount || 0), 0);
+      const collectionStats = summarizeCollections(payments);
       const totalOutstanding = payments.filter((payment) => payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
       const totalOverdue = payments.filter((payment) => payment.status === 'Overdue').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
       const openMaintenance = maintenance.filter((item) => item.status !== 'Resolved').length;
@@ -331,6 +332,7 @@ export const getDashboard = async () => {
           vacantUnits,
           totalMonthlyRent,
           paidPayments: totalPaid,
+          ...collectionStats,
           totalOutstanding,
           totalOverdue,
           overduePayments: totalOutstanding + totalOverdue,
@@ -1125,6 +1127,23 @@ export const updateEntity = async (entityName, id, payload) => {
 
 export const deleteEntity = async (entityName, id) => {
   if (supabase) {
+    if (entityName === 'tenants') {
+      const [leasesResult, paymentsResult] = await Promise.all([
+        supabase.from('leases').select('id').eq('tenant_id', id).limit(1),
+        supabase.from('payments').select('id').eq('tenant_id', id).limit(1),
+      ]);
+
+      if (leasesResult.error) throw leasesResult.error;
+      if (paymentsResult.error) throw paymentsResult.error;
+
+      if ((leasesResult.data || []).length || (paymentsResult.data || []).length) {
+        throw Object.assign(
+          new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+          { code: 'TENANT_HAS_HISTORY' },
+        );
+      }
+    }
+
     try {
       const { error } = await supabase.from(entityName).delete().eq('id', id);
       if (error) throw error;
@@ -1136,6 +1155,22 @@ export const deleteEntity = async (entityName, id) => {
   }
 
   const state = loadData();
+
+  if (entityName === 'tenants') {
+    const tenantId = String(id);
+    const hasRelatedRecord = (entries = []) =>
+      (entries || []).some(
+        (entry) => String(entry.tenant_id ?? entry.tenantId ?? '') === tenantId,
+      );
+
+    if (hasRelatedRecord(state.leases) || hasRelatedRecord(state.payments)) {
+      throw Object.assign(
+        new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+        { code: 'TENANT_HAS_HISTORY' },
+      );
+    }
+  }
+
   const list = state[entityName] || [];
   state[entityName] = list.filter((entry) => entry.id !== id);
   saveData(state);
