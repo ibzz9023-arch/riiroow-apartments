@@ -301,12 +301,56 @@ export const summarizeMaintenance = (maintenance = []) => {
   };
 };
 
+const getPaymentMonthKey = (value) => {
+  const normalized = normalizePaymentValue(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(normalized);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${match[1]}-${match[2]}`;
+};
+
+export const summarizeCollections = (payments = [], now = new Date()) => {
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentYear = String(now.getFullYear());
+
+  return (payments || []).reduce((totals, payment) => {
+    const normalized = normalizePaymentRecord(payment);
+    const paidAmount = Math.max(0, Number(normalized.paidAmount || 0));
+    const paidMonth = getPaymentMonthKey(normalized.paidDate ?? normalized.paid_date);
+    const rentMonth = getPaymentMonthKey(normalized.dueDate ?? normalized.due_date);
+
+    if (paidMonth === currentMonth) totals.collectedThisMonth += paidAmount;
+    if (paidMonth && paidMonth.slice(0, 4) === currentYear) totals.collectedThisYear += paidAmount;
+    if (rentMonth === currentMonth) totals.currentMonthRentPaid += paidAmount;
+
+    return totals;
+  }, {
+    collectedThisMonth: 0,
+    collectedThisYear: 0,
+    currentMonthRentPaid: 0,
+  });
+};
 export const summarizeDashboard = (state) => {
   const totalUnits = state.units.length;
   const occupiedUnits = state.units.filter((unit) => unit.status === 'occupied').length;
   const vacantUnits = totalUnits - occupiedUnits;
   const totalMonthlyRent = state.units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
   const normalizedPayments = normalizePaymentRecords(state.payments || []);
+  const collectionStats = summarizeCollections(normalizedPayments);
   const totalRentDue = normalizedPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const paidPayments = normalizedPayments.reduce((sum, payment) => sum + Number(payment.paidAmount || 0), 0);
   const totalRemaining = normalizedPayments.reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
@@ -325,6 +369,7 @@ export const summarizeDashboard = (state) => {
       totalRemaining,
       totalOutstanding,
       totalOverdue,
+      ...collectionStats,
       overduePayments: totalOutstanding + totalOverdue,
       openMaintenance: maintenanceSummary.pendingRequests + maintenanceSummary.inProgressRequests,
       occupancyRate: totalUnits ? Math.round((occupiedUnits / totalUnits) * 100) : 0,
