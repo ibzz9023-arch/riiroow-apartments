@@ -294,7 +294,7 @@ const ensureSupabaseDataExists = async () => {
   ]);
 
   if ((!units || units.length === 0) || (!tenants || tenants.length === 0) || (!users || users.length === 0)) {
-    await upsertSeedData();
+    // Automatic demo seeding disabled to protect existing database data.
   }
 };
 
