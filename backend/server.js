@@ -40,9 +40,13 @@ import {
   updatePayment,
   updateTenant,
   terminateLease,
-  toLegacyUser,
 } from './src/dataService.js';
 import { hasSupabase, supabase, supabaseServiceRole } from './src/supabaseClient.js';
+import {
+  createSessionToken,
+  getSessionSecret,
+  requireRoles,
+} from './src/authSession.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -148,32 +152,6 @@ const parseQrMaintenanceMultipart = (req, res, next) => {
   });
 };
 
-const authHeaderToRole = (req) => {
-  const authHeader = req.headers.authorization || '';
-  if (!authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.replace('Bearer ', '').trim();
-  if (token.startsWith('demo-token-')) {
-    return token.replace('demo-token-', '').trim();
-  }
-  return null;
-};
-
-const normalizeRole = (role) => String(role || '').trim();
-
-const requireRoles = (...roles) => (req, res, next) => {
-  const userRole = normalizeRole(authHeaderToRole(req));
-  if (!userRole) {
-    return res.status(401).json({ error: 'Authentication required.' });
-  }
-
-  const allowedRoles = roles.map((role) => normalizeRole(role).toLowerCase());
-  if (!allowedRoles.includes(userRole.toLowerCase())) {
-    return res.status(403).json({ error: 'You do not have access to this resource.' });
-  }
-
-  next();
-};
-
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
@@ -209,6 +187,13 @@ const loginRateLimit = (req, res, next) => {
 };
 
 app.post('/api/auth/login', loginRateLimit, async (req, res) => {
+  let secret;
+  try {
+    secret = getSessionSecret();
+  } catch {
+    return res.status(503).json({ error: 'Authentication is temporarily unavailable.' });
+  }
+
   try {
     const { email, password } = req.body || {};
     const loginResult = await loginUser({ email, password });
@@ -217,16 +202,26 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    return res.json(loginResult);
+    let token;
+    try {
+      token = createSessionToken(loginResult.user, { secret });
+    } catch {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    return res.json({ ...loginResult, token });
   } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({ error: 'Unable to complete login.' });
+    console.error('Login could not be completed:', error.message || 'Authentication data unavailable.');
+    return res.status(503).json({ error: 'Authentication is temporarily unavailable.' });
   }
 });
 
 app.get('/api/users', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
-    res.json(await getUsers());
+    const users = await getUsers();
+    res.json(users.map((user) => Object.fromEntries(
+      Object.entries(user).filter(([key]) => !/password/i.test(key))
+    )));
   } catch (error) {
     console.error('Users fetch error:', error);
     res.status(500).json({ error: 'Unable to load users.' });
@@ -387,7 +382,7 @@ app.post('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager'), 
     const transaction = await recordSecurityDepositTransaction(
       req.params.id,
       req.body || {},
-      null
+      req.auth.sub
     );
     res.status(201).json(transaction);
   } catch (error) {
@@ -565,7 +560,7 @@ app.patch(
         notificationId: req.params.id,
         action: req.body?.action,
         reviewNote: req.body?.reviewNote,
-        reviewedBy: null,
+        reviewedBy: req.auth.sub,
       });
 
       return res.status(result.status).json(result.body);
@@ -626,7 +621,7 @@ app.patch(
         requestId: req.params.id,
         action: req.body?.action,
         reviewNote: req.body?.reviewNote,
-        reviewedBy: null,
+        reviewedBy: req.auth.sub,
       });
 
       return res.status(result.status).json(result.body);
@@ -976,6 +971,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Unexpected server error.' });
 });
 
-app.listen(port, () => {
-  console.log(`Riiroow API is running on http://localhost:${port}`);
-});
+export { app };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  app.listen(port, () => {
+    console.log(`Riiroow API is running on http://localhost:${port}`);
+  });
+}

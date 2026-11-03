@@ -260,6 +260,23 @@ test('new review-mode migration separates manual and automatic rent recording', 
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.review_payment_notification/i);
 });
 
+test('UUID audit migration preserves verified_by column type and review behavior', () => {
+  const migration = readFileSync(
+    new URL('../migrations/20261103_payment_verified_by_type_compat.sql', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.review_payment_notification/i);
+  assert.match(migration, /p_reviewed_by text DEFAULT NULL/i);
+  assert.match(migration, /v_verified_by_type NOT IN \(\s+'uuid'::regtype,\s+'text'::regtype\s+\)/i);
+  assert.match(migration, /v_reviewed_by_uuid := btrim\(p_reviewed_by\)::uuid/i);
+  assert.match(migration, /verified_by = v_reviewed_by_uuid/i);
+  assert.match(migration, /verified_by = p_reviewed_by/i);
+  assert.match(migration, /status = 'Verified - Rent Recorded'/i);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.review_payment_notification/i);
+  assert.doesNotMatch(migration, /ALTER TABLE public\.payments/i);
+});
+
 test('review migration preserves exact lease matching and balance protections', () => {
   const migration = readFileSync(
     new URL('../migrations/20261018_payment_notifications_review_fields.sql', import.meta.url),

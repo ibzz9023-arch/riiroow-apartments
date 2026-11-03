@@ -257,6 +257,19 @@ export const loadData = () => {
   }
 };
 
+export const readLocalUsers = () => {
+  if (!fs.existsSync(dataFilePath)) return [];
+
+  const raw = fs.readFileSync(dataFilePath, 'utf8');
+  if (!raw.trim()) return [];
+
+  const state = JSON.parse(raw);
+  return Array.isArray(state.users) ? state.users : [];
+};
+
+export const findLocalUserById = (id) =>
+  readLocalUsers().find((user) => String(user.id) === String(id)) || null;
+
 export const saveData = (data) => {
   const folder = path.dirname(dataFilePath);
   if (!fs.existsSync(folder)) {

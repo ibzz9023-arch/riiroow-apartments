@@ -10,6 +10,7 @@ const tempDirectory = join(tmpdir(), `riiroow-login-check-${process.pid}-${Date.
 mkdirSync(tempDirectory, { recursive: true });
 
 process.env.RIIROOW_DATA_FILE = join(tempDirectory, 'store.json');
+process.env.RIIROOW_LOCAL_AUTH = 'true';
 process.env.SUPABASE_URL = '';
 process.env.SUPABASE_ANON_KEY = '';
 process.env.SUPABASE_SERVICE_ROLE_KEY = '';
@@ -17,10 +18,11 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 const { loginUser } = await import('../src/dataService.js');
 
 const testUser = {
-  id: 'auth-test-user',
+  id: '550e8400-e29b-41d4-a716-446655440099',
   name: 'Authentication Test',
   email: 'admin@riiroow.com',
-  role: 'admin',
+  role: 'Admin',
+  is_active: true,
   permissions: ['all'],
 };
 
