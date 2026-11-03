@@ -25,3 +25,17 @@ export const ensureSupabaseConfigured = () => {
     throw new Error('Supabase is not configured. Add SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY to backend/.env.local or backend/.env.');
   }
 };
+
+// Dedicated privileged client for server-side tenant QR operations.
+// This client never falls back to the anon key.
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+export const supabaseServiceRole =
+  supabaseUrl && supabaseServiceRoleKey
+    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+    : null;

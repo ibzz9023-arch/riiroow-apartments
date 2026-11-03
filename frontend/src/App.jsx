@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
+import QRCode from 'qrcode';
 
 
 const formatCurrency = (value) =>
@@ -9,6 +10,17 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const formatDateTime = (value) => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+};
 const initialLogin = { email: 'admin@riiroow.com', password: 'admin123' };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -188,18 +200,184 @@ const [user, setUser] = useState(null);
   const [leaseForm, setLeaseForm] = useState(emptyLeaseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
+  const [managerPaymentNotifications, setManagerPaymentNotifications] = useState([]);
+  const [paymentNotificationsLoading, setPaymentNotificationsLoading] = useState(false);
+  const [paymentNotificationsError, setPaymentNotificationsError] = useState('');
+  const [paymentReviewBusyId, setPaymentReviewBusyId] = useState('');
+  const [paymentReviewNote, setPaymentReviewNote] = useState({});
+  const [managerMoveOutRequests, setManagerMoveOutRequests] = useState([]);
+  const [moveOutRequestsLoading, setMoveOutRequestsLoading] = useState(false);
+  const [moveOutRequestsError, setMoveOutRequestsError] = useState('');
+  const [moveOutReviewBusyId, setMoveOutReviewBusyId] = useState('');
+  const [moveOutReviewNote, setMoveOutReviewNote] = useState({});
+  const [depositOverview, setDepositOverview] = useState({ agreedDeposit: 0, depositReceived: 0, outstandingDeposit: 0, availableDeposit: 0, transactions: [], loaded: false });
+  const [selectedDepositLeaseId, setSelectedDepositLeaseId] = useState('');
+  const [depositSummary, setDepositSummary] = useState(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositForm, setDepositForm] = useState({
+    type: 'payment',
+    amount: '',
+    transactionDate: todayIso(),
+    notes: '',
+  });
+
+  const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
+  const [qrMaintenanceSuccess, setQrMaintenanceSuccess] = useState(false);
+  const [qrMaintenanceSubmitting, setQrMaintenanceSubmitting] = useState(false);
+  const [qrPaymentVerificationOpen, setQrPaymentVerificationOpen] = useState(false);
+  const [qrPaymentPin, setQrPaymentPin] = useState('');
+  const [qrPaymentPinError, setQrPaymentPinError] = useState('');
+  const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
+  const [qrTenantToken, setQrTenantToken] = useState('');
+  const [qrPaymentNotificationForm, setQrPaymentNotificationForm] = useState({
+    amount: '',
+    paymentMethod: 'Mobile Money',
+    transactionReference: '',
+  });
+  const [qrPaymentNotificationSubmitting, setQrPaymentNotificationSubmitting] = useState(false);
+  const [qrPaymentNotificationError, setQrPaymentNotificationError] = useState('');
+  const [qrPaymentNotificationSuccess, setQrPaymentNotificationSuccess] = useState(false);
+  const [qrPaymentIdempotencyKey, setQrPaymentIdempotencyKey] = useState('');
+
+  const [qrMoveOutForm, setQrMoveOutForm] = useState({
+    requestedMoveOutDate: '',
+    reason: '',
+  });
+  const [qrMoveOutSubmitting, setQrMoveOutSubmitting] = useState(false);
+  const [qrMoveOutError, setQrMoveOutError] = useState('');
+  const [qrMoveOutSuccess, setQrMoveOutSuccess] = useState(false);
+  const [qrMaintenanceForm, setQrMaintenanceForm] = useState({
+    title: '',
+    description: '',
+    priority: 'Medium',
+  });
+  const [qrRecording, setQrRecording] = useState(false);
+  const [qrAudioBlob, setQrAudioBlob] = useState(null);
+  const [qrAudioUrl, setQrAudioUrl] = useState('');
+  const [qrMediaError, setQrMediaError] = useState('');
+  const qrMediaRecorderRef = useRef(null);
+  const qrAudioChunksRef = useRef([]);
+
+  const startQrVoiceRecording = async () => {
+    setQrMediaError('');
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setQrMediaError('Voice recording is not supported by this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const supportedMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+      ];
+
+      const mimeType = supportedMimeTypes.find((type) =>
+        MediaRecorder.isTypeSupported(type)
+      );
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      qrAudioChunksRef.current = [];
+      qrMediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          qrAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const actualMimeType = recorder.mimeType || mimeType || 'audio/webm';
+        const audioBlob = new Blob(qrAudioChunksRef.current, {
+          type: actualMimeType,
+        });
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        setQrAudioBlob(audioBlob);
+        setQrAudioUrl((previousUrl) => {
+          if (previousUrl) URL.revokeObjectURL(previousUrl);
+          return audioUrl;
+        });
+        setQrRecording(false);
+
+        stream.getTracks().forEach((track) => track.stop());
+        qrMediaRecorderRef.current = null;
+        qrAudioChunksRef.current = [];
+      };
+
+      recorder.onerror = () => {
+        setQrMediaError('Unable to record the voice report.');
+        setQrRecording(false);
+        stream.getTracks().forEach((track) => track.stop());
+        qrMediaRecorderRef.current = null;
+      };
+
+      recorder.start();
+      setQrRecording(true);
+    } catch (error) {
+      console.error('QR voice recording error:', error);
+      setQrMediaError(
+        error?.name === 'NotAllowedError'
+          ? 'Microphone permission was denied. Please allow microphone access and try again.'
+          : 'Unable to access the microphone.'
+      );
+      setQrRecording(false);
+    }
+  };
+
+  const stopQrVoiceRecording = () => {
+    const recorder = qrMediaRecorderRef.current;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+  };
+
+  const discardQrVoiceRecording = () => {
+    if (qrMediaRecorderRef.current) {
+      if (qrMediaRecorderRef.current.state !== 'inactive') {
+        qrMediaRecorderRef.current.stop();
+      }
+      qrMediaRecorderRef.current = null;
+    }
+
+    if (qrAudioUrl) {
+      URL.revokeObjectURL(qrAudioUrl);
+    }
+
+    setQrAudioUrl('');
+    setQrAudioBlob(null);
+    setQrRecording(false);
+    setQrMediaError('');
+    qrAudioChunksRef.current = [];
+  };
+  const qrPathMatch = window.location.pathname.match(/\/qr\/([^/]+)/i);
+  const qrUnitNumber = qrPathMatch ? decodeURIComponent(qrPathMatch[1]) : '';
+
 
   const requestJson = async (path, options = {}) => {
     const { method = 'GET', body, headers = {} } = options;
     const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method,
       headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(body
+        ? { body: isFormData ? body : JSON.stringify(body) }
+        : {}),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -209,7 +387,611 @@ const [user, setUser] = useState(null);
 
     return data;
   };
+    const viewMaintenanceEvidence = async (item) => {
+    const popup = window.open('', '_blank');
 
+    if (!popup) {
+      setError('Please allow pop-ups to view maintenance attachments.');
+      return;
+    }
+
+    popup.document.title = 'Maintenance attachments';
+    popup.document.body.innerHTML =
+      '<p style="font-family:Arial;padding:24px">Loading attachments...</p>';
+
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[char]);
+
+    try {
+      const result = await requestJson(
+        `/api/maintenance/${encodeURIComponent(item.id)}/evidence`
+      );
+      const files = result.evidence || [];
+
+      if (!files.length) {
+        popup.document.body.innerHTML =
+          '<p style="font-family:Arial;padding:24px">No attachments were found for this maintenance request.</p>';
+        return;
+      }
+
+      const requestLabel = item.title || item.description || item.id;
+
+      const cards = files.map((file, index) => {
+        const name = escapeHtml(file.originalName || file.fileType || 'Attachment');
+        const url = escapeHtml(file.url || '');
+        const type = String(file.mimeType || '').toLowerCase();
+
+        let media = '';
+
+        if (type.startsWith('image/')) {
+          media = `<img src="${url}" alt="${name}" style="max-width:100%;max-height:70vh;object-fit:contain">`;
+        } else if (type.startsWith('audio/')) {
+          media = `<audio controls preload="metadata" src="${url}" style="width:100%"></audio>`;
+        } else if (type.startsWith('video/')) {
+          media = `<video controls preload="metadata" src="${url}" style="max-width:100%;max-height:70vh"></video>`;
+        } else {
+          media = `<a href="${url}" target="_blank" rel="noopener noreferrer">Open attachment</a>`;
+        }
+
+        const size = Number(file.fileSize) > 0
+          ? `<p>${(Number(file.fileSize) / 1024).toFixed(1)} KB</p>`
+          : '';
+
+        return `<section style="border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;overflow-wrap:anywhere">
+          <h3>${name}</h3>
+          ${media}${size}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+            <button type="button" data-action="whatsapp" data-index="${index}" data-url="${url}" data-name="${name}">Share via WhatsApp</button>
+            <button type="button" data-action="email" data-url="${url}" data-name="${name}">Share via Email</button>
+            <button type="button" data-action="copy" data-url="${url}">Copy Link</button>
+            <button type="button" data-action="download" data-url="${url}" data-name="${name}">Open / Download</button>
+            <button type="button" data-action="share" data-url="${url}" data-name="${name}">Share</button>
+          </div>
+        </section>`;
+      }).join('');
+
+      popup.document.open();
+      popup.document.write(
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222}button{padding:10px 12px;border:1px solid #bbb;border-radius:7px;background:#f7f7f7;cursor:pointer}button:hover{background:#eaeaea}</style></head><body><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(requestLabel)}</p><button type="button" id="share-all">Share all via WhatsApp</button>
+<button type="button" id="email-all">Email all attachments</button>${cards}<p style="color:#666">Secure attachment links expire after 10 minutes. Recipients may need access before the links expire.</p><p id="share-status" role="status" aria-live="polite"></p></body></html>`
+      );
+      popup.document.close();
+
+      const status = popup.document.getElementById('share-status');
+      const setStatus = (message) => {
+        if (status) status.textContent = message;
+      };
+
+      const copyText = async (text) => {
+        try {
+          await popup.navigator.clipboard.writeText(text);
+          setStatus('Link copied.');
+        } catch {
+          popup.prompt('Copy this attachment link:', text);
+        }
+      };
+
+      popup.document.getElementById('email-all')?.addEventListener('click', () => {
+        const links = files.map((file) =>
+          `${file.originalName || file.fileType || 'Attachment'}: ${file.url || ''}`
+        ).join('\n');
+
+        const subject = `Maintenance attachments: ${requestLabel}`;
+        const body = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure attachment links expire after 10 minutes.`;
+        popup.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      });
+
+      popup.document.getElementById('share-all')?.addEventListener('click', () => {
+        const links = files.map((file) =>
+          `${file.originalName || file.fileType || 'Attachment'}: ${file.url || ''}`
+        ).join('\n');
+
+        const message = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure links expire after 10 minutes.`;
+        popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+      });
+
+      popup.document.querySelectorAll('[data-action]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const url = button.getAttribute('data-url') || '';
+          const name = button.getAttribute('data-name') || 'Attachment';
+          const action = button.getAttribute('data-action');
+          const message = `Maintenance request: ${requestLabel}\nAttachment: ${name}\nSecure link (expires in 10 minutes): ${url}`;
+
+          if (!url) {
+            setStatus('No attachment link is available.');
+            return;
+          }
+
+          if (action === 'email') {
+            const subject = `Maintenance attachment: ${name}`;
+            popup.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+            return;
+          }
+
+          if (action === 'whatsapp') {
+            popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+            return;
+          }
+
+          if (action === 'copy') {
+            await copyText(url);
+            return;
+          }
+
+          if (action === 'download') {
+            const link = popup.document.createElement('a');
+            link.href = url;
+            link.download = name;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            popup.document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setStatus('The attachment was opened. Use your browser controls to save it if needed.');
+            return;
+          }
+
+          if (action === 'share') {
+            try {
+              if (typeof popup.navigator.share === 'function') {
+                await popup.navigator.share({
+                  title: name,
+                  text: `Maintenance request: ${requestLabel}`,
+                  url,
+                });
+              } else {
+                await copyText(url);
+                setStatus('Native sharing is unavailable. The attachment link was copied instead.');
+              }
+            } catch (err) {
+              if (err?.name !== 'AbortError') {
+                await copyText(url);
+                setStatus('Sharing was unavailable. You can copy the link instead.');
+              }
+            }
+          }
+        });
+      });
+    } catch (err) {
+      popup.document.body.innerHTML = '';
+      const message = popup.document.createElement('p');
+      message.style.cssText = 'font-family:Arial;padding:24px';
+      message.textContent = err.message || 'Unable to load maintenance attachments.';
+      popup.document.body.appendChild(message);
+    }
+  };
+const printUnitQRCodes = async () => {
+    if (!units.length) {
+      window.alert('No units are available to print QR codes.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+    if (!printWindow) {
+      window.alert('Please allow pop-ups for Riiroow to print QR codes.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Riiroow Unit QR Codes</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 12mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              background: #fff;
+              color: #171717;
+            }
+
+            .qr-page {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 12mm;
+            }
+
+            .qr-card {
+              border: 2px solid #171717;
+              border-radius: 12px;
+              min-height: 115mm;
+              padding: 10mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            .brand {
+              font-size: 20px;
+              font-weight: 800;
+              letter-spacing: 2px;
+              margin-bottom: 5mm;
+            }
+
+            .qr-label {
+              font-size: 28px;
+              font-weight: 800;
+              margin-bottom: 2mm;
+            }
+
+            .unit-label {
+              font-size: 18px;
+              font-weight: 600;
+              margin-bottom: 6mm;
+            }
+
+            .qr-image {
+              width: 58mm;
+              height: 58mm;
+              image-rendering: pixelated;
+            }
+
+            .pin-label {
+              font-size: 24px;
+              font-weight: 900;
+              margin-top: 5mm;
+              padding: 3mm 5mm;
+              border: 2px dashed #171717;
+            }
+
+            .instructions {
+              margin-top: 6mm;
+              font-size: 11px;
+              line-height: 1.4;
+              max-width: 65mm;
+            }
+
+            @media print {
+              .qr-card {
+                box-shadow: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="qr-page" id="qr-page"></div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    const page = printWindow.document.getElementById('qr-page');
+
+    for (const unit of units) {
+      const unitNumber = String(unit.unitNumber || '').trim();
+      const qrData = `https://riiroow-apartments-production.up.railway.app/qr/${encodeURIComponent(unitNumber)}`;
+
+      const qrDataUrl = await QRCode.toDataURL(qrData, {
+        width: 500,
+        margin: 2,
+        errorCorrectionLevel: 'H',
+      });
+
+      const card = printWindow.document.createElement('div');
+      card.className = 'qr-card';
+      card.innerHTML = `
+        <div class="brand">RIIROOW</div>
+        <div class="qr-label">QR ${unitNumber}</div>
+        <div class="unit-label">UNIT ${unitNumber}</div>
+        <img class="qr-image" src="${qrDataUrl}" alt="QR code for unit ${unitNumber}" />
+        <div class="pin-label">TENANT PIN: ${String(unitNumber).padStart(4, '0')}</div>
+        <div class="instructions">
+          Scan this code for Riiroow apartment services.
+        </div>
+      `;
+
+      page.appendChild(card);
+    }
+
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 300);
+  };
+
+  const loadSecurityDeposit = async (leaseId) => {
+    if (!leaseId) {
+      setDepositSummary(null);
+      return;
+    }
+
+    setDepositLoading(true);
+    setError('');
+
+    try {
+      const summary = await requestJson(
+        `/api/leases/${encodeURIComponent(leaseId)}/security-deposits`
+      );
+      setDepositSummary(summary);
+    } catch (err) {
+      setError(err.message || 'Unable to load security-deposit records.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
+  const handleDepositSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!selectedDepositLeaseId) {
+      setError('Please select a lease first.');
+      return;
+    }
+
+    const amount = Number(depositForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+
+    setDepositLoading(true);
+    setError('');
+    setInfoMessage('');
+
+    try {
+      await requestJson(
+        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`,
+        {
+          method: 'POST',
+          body: {
+            transactionType: depositForm.type,
+            amount,
+            transactionDate: depositForm.transactionDate,
+            notes: depositForm.notes,
+          },
+        }
+      );
+
+      const summary = await requestJson(
+        `/api/leases/${encodeURIComponent(selectedDepositLeaseId)}/security-deposits`
+      );
+      setDepositSummary(summary);
+      setDepositForm({
+        type: 'payment',
+        amount: '',
+        transactionDate: todayIso(),
+        notes: '',
+      });
+      setInfoMessage('Security-deposit transaction recorded successfully.');
+
+      // Refresh dashboard totals without changing existing records.
+      await fetchDashboard();
+    } catch (err) {
+      setError(err.message || 'Unable to record the security-deposit transaction.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+  const handleQrMaintenanceSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setError('Verify your tenant PIN before submitting a maintenance request.');
+      return;
+    }
+
+    const form = event.currentTarget;
+    const payload = new FormData(form);
+    const title = String(payload.get('title') || '').trim();
+    const description = String(payload.get('description') || '').trim();
+
+    if (qrAudioBlob) {
+      const audioExtension = qrAudioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      payload.append('audio', qrAudioBlob, 'voice-report.' + audioExtension);
+    }
+
+    const hasMedia = ['audio', 'photo', 'video'].some((field) => {
+      const file = payload.get(field);
+      return file && typeof file === 'object' && file.size > 0;
+    });
+
+    if (!title && !description && !hasMedia) {
+      setError('Describe the problem or attach a voice recording, photo, or video.');
+      return;
+    }
+
+    setError('');
+    setInfoMessage('');
+    setQrMaintenanceSubmitting(true);
+
+    try {
+      const response = await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/maintenance`,
+        {
+          method: 'POST',
+          body: payload,
+          headers: { Authorization: `Bearer ${qrTenantToken}` },
+        }
+      );
+
+      setInfoMessage(
+        response.message || 'Maintenance request submitted successfully.'
+      );
+      setQrMaintenanceSuccess(true);
+
+      setQrMaintenanceForm({
+        title: '',
+        description: '',
+        priority: 'Medium',
+      });
+
+      form.reset();
+
+      if (qrAudioUrl) {
+        URL.revokeObjectURL(qrAudioUrl);
+      }
+
+      setQrAudioUrl('');
+      setQrAudioBlob(null);
+      setQrMediaError('');
+      setQrMaintenanceOpen(false);
+    } catch (requestError) {
+      setError(
+        requestError.message || 'Unable to submit the maintenance request.'
+      );
+    } finally {
+      setQrMaintenanceSubmitting(false);
+    }
+  };
+
+  const handleQrPaymentPinSubmit = async (event) => {
+    event.preventDefault();
+
+    const enteredPin = qrPaymentPin.trim();
+
+    if (!/^\d{4}$/.test(enteredPin)) {
+      setQrPaymentPinError('Enter your tenant PIN.');
+      setQrPaymentVerified(false);
+      setQrTenantToken('');
+      return;
+    }
+
+    setQrPaymentPinError('');
+    setQrPaymentVerified(false);
+    setQrTenantToken('');
+
+    try {
+      const response = await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/verify-pin`,
+        {
+          method: 'POST',
+          body: { pin: enteredPin },
+          headers: { Authorization: '' },
+        }
+      );
+
+      if (!response.token) {
+        throw new Error('Verification did not return a tenant session. Please try again.');
+      }
+
+      setQrTenantToken(response.token);
+      setQrPaymentPin('');
+      setQrPaymentPinError('');
+      setQrPaymentVerified(true);
+    } catch (requestError) {
+      setQrPaymentPinError(
+        requestError.message || 'Unable to verify your PIN. Please try again.'
+      );
+      setQrPaymentVerified(false);
+      setQrTenantToken('');
+    }
+  };
+
+  const handleQrPaymentNotificationSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setQrPaymentNotificationError('Verify your tenant PIN before submitting.');
+      return;
+    }
+
+    const amount = Number(qrPaymentNotificationForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setQrPaymentNotificationError('Enter a valid payment amount greater than zero.');
+      return;
+    }
+
+    let idempotencyKey = qrPaymentIdempotencyKey;
+    if (!idempotencyKey) {
+      if (!globalThis.crypto?.randomUUID) {
+        setQrPaymentNotificationError('Secure submission is unavailable in this browser. Please try a current browser.');
+        return;
+      }
+      idempotencyKey = globalThis.crypto.randomUUID();
+      setQrPaymentIdempotencyKey(idempotencyKey);
+    }
+
+    setQrPaymentNotificationError('');
+    setQrPaymentNotificationSubmitting(true);
+
+    try {
+      await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/payment-notification`,
+        {
+          method: 'POST',
+          body: {
+            amount,
+            paymentMethod: qrPaymentNotificationForm.paymentMethod,
+            transactionReference: qrPaymentNotificationForm.transactionReference.trim(),
+          },
+          headers: {
+            Authorization: `Bearer ${qrTenantToken}`,
+            'Idempotency-Key': idempotencyKey,
+          },
+        }
+      );
+
+      setQrPaymentNotificationForm({
+        amount: '',
+        paymentMethod: 'Mobile Money',
+        transactionReference: '',
+      });
+      setQrPaymentIdempotencyKey('');
+      setQrPaymentNotificationSuccess(true);
+    } catch (requestError) {
+      setQrPaymentNotificationError(
+        requestError.message || 'Unable to submit the payment notification. Please try again.'
+      );
+    } finally {
+      setQrPaymentNotificationSubmitting(false);
+    }
+  };
+
+  const handleQrMoveOutSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!qrTenantToken) {
+      setQrMoveOutError('Verify your tenant PIN before submitting.');
+      return;
+    }
+
+    if (!qrMoveOutForm.requestedMoveOutDate) {
+      setQrMoveOutError('Choose your requested move-out date.');
+      return;
+    }
+
+    setQrMoveOutError('');
+    setQrMoveOutSubmitting(true);
+
+    try {
+      await requestJson(
+        `/api/public/qr/${encodeURIComponent(qrUnitNumber)}/move-out-request`,
+        {
+          method: 'POST',
+          body: {
+            requestedMoveOutDate: qrMoveOutForm.requestedMoveOutDate,
+            reason: qrMoveOutForm.reason.trim(),
+          },
+          headers: { Authorization: `Bearer ${qrTenantToken}` },
+        }
+      );
+
+      setQrMoveOutForm({ requestedMoveOutDate: '', reason: '' });
+      setQrMoveOutSuccess(true);
+    } catch (requestError) {
+      setQrMoveOutError(
+        requestError.message || 'Unable to submit your move-out request. Please try again.'
+      );
+    } finally {
+      setQrMoveOutSubmitting(false);
+    }
+  };
   const fetchDashboard = async () => {
     try {
       setLoading(true);
@@ -471,6 +1253,67 @@ const handleLogin = async (event) => {
       await fetchDashboard();
     } catch (submitError) {
       setError(submitError.message);
+    }
+  };
+
+  const handleGenerateTenantPin = async (lease) => {
+    if (String(lease.status).toLowerCase() !== 'active') {
+      window.alert('A tenant PIN can only be generated for an active lease.');
+      return;
+    }
+
+    const typedUnitNumber = window.prompt(
+      `Safety check: type ${lease.unitNumber} to confirm the correct unit.`,
+      ''
+    );
+
+    if (typedUnitNumber === null) return;
+
+    if (typedUnitNumber.trim() !== String(lease.unitNumber).trim()) {
+      window.alert('Unit number did not match. No PIN was changed.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `FINAL CONFIRMATION: Generate or reset the PIN for Unit ${lease.unitNumber}? Existing PIN access will be reset.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setInfoMessage('');
+
+    try {
+      const response = await requestJson(
+        `/api/manager/leases/${encodeURIComponent(lease.id)}/tenant-pin`,
+        {
+          method: 'POST',
+          body: { expectedUnitNumber: typedUnitNumber.trim() },
+        }
+      );
+
+      if (
+        String(response.unitNumber) !== typedUnitNumber.trim() ||
+        String(response.pin || '') !== String(lease.unitNumber).padStart(4, '0') ||
+        !/^\d{4}$/.test(String(response.pin || ''))
+      ) {
+        throw new Error(
+          'Safety check failed: the server returned a different unit. Do not share a PIN.'
+        );
+      }
+
+      window.alert(
+        `NEW TENANT PIN — UNIT ${lease.unitNumber}\n\n` +
+        `${response.pin}\n\n` +
+        'Give this PIN directly to the authorized tenant. ' +
+        'It will not be shown again. Do not share it publicly.'
+      );
+
+      setInfoMessage(
+        `A new tenant PIN was generated for Unit ${lease.unitNumber}. Share it privately with the authorized tenant.`
+      );
+    } catch (requestError) {
+      setError(requestError.message || 'Unable to generate the tenant PIN.');
     }
   };
 
@@ -911,14 +1754,29 @@ const handleLogin = async (event) => {
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 60px;
-      margin-top: 75px;
+      gap: 30px;
+      margin-top: 55px;
+      align-items: end;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .signature {
       border-top: 1px solid #222;
       padding-top: 8px;
-      min-height: 70px;
+      min-height: 100px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .lease-signature-image {
+      display: block;
+      width: 260px;
+      max-width: 100%;
+      height: 85px;
+      object-fit: contain;
+      object-position: left center;
+      margin: -8px 0 0;
     }
 
     .footer {
@@ -1029,9 +1887,8 @@ const handleLogin = async (event) => {
       Date: ____________________
     </div>
 
-    <div class="signature">
-      <strong>Riiroow Apartment Management</strong><br><br>
-      Authorized Signature: ____________________<br>
+    <div class="signature authorized-signature">
+      <strong>Riiroow Apartment Management</strong><br>
       Date: ____________________
     </div>
   </div>
@@ -1262,6 +2119,413 @@ const handleLogin = async (event) => {
     }
   };
 
+  if (qrUnitNumber) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="brand-header">
+            <div className="brand-mark">
+              <img src={import.meta.env.BASE_URL + 'riiroow-logo.png'} alt="Riiroow Apartments logo" />
+            </div>
+            <div className="brand-copy">
+              <p className="eyebrow">Riiroow Apartments</p>
+              <h1>Unit {qrUnitNumber}</h1>
+            </div>
+          </div>
+
+          <div className="auth-intro">
+            Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
+          </div>
+
+          <div className="stacked-sections">
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => { setQrMaintenanceSuccess(false); setQrMaintenanceOpen(true); }}
+            >
+              Maintenance Request
+            </button>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setQrPaymentPin('');
+                setQrPaymentPinError('');
+                setQrPaymentVerified(false);
+                setQrPaymentVerificationOpen(true);
+              }}
+            >
+              Tenant PIN Verification
+            </button>
+          </div>
+
+          {qrMaintenanceSuccess ? (
+            <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
+              <div aria-hidden="true" style={{ width: '88px', height: '88px', margin: '0 auto 16px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '60px', fontWeight: 700 }}>
+                ✓
+              </div>
+              <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
+              <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
+              <button type="button" className="primary-btn" onClick={() => setQrMaintenanceSuccess(false)}>
+                Done
+              </button>
+            </section>
+          ) : null}
+
+          {qrPaymentVerificationOpen ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Tenant PIN Verification</h3>
+              </div>
+              <form className="crud-form" onSubmit={handleQrPaymentPinSubmit}>
+                <label>
+                  Unit number PIN
+                  <input
+                    type="password"
+                    name="pin"
+                    value={qrPaymentPin}
+                    onChange={(event) => {
+                      setQrPaymentPin(event.target.value);
+                      setQrPaymentPinError('');
+                      setQrPaymentVerified(false);
+                    }}
+                    autoComplete="off"
+                    maxLength={64}
+                    aria-describedby="qr-payment-pin-note"
+                  />
+                </label>
+                {qrPaymentPinError ? <p className="error-text" role="alert">{qrPaymentPinError}</p> : null}
+                {qrPaymentVerified ? (
+                  <p className="success-text" role="status">
+                    Tenant PIN verified. Payment records and other private information are not available in this portal.
+                  </p>
+                ) : null}
+                <p id="qr-payment-pin-note">
+                  The unit number is guessable and is not strong authentication. This check does not grant access to private records.
+                </p>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setQrPaymentVerificationOpen(false)}
+                  >
+                    Back
+                  </button>
+                  <button type="submit" className="primary-btn">Verify PIN</button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && qrPaymentNotificationSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+              <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
+              <h3>Payment Notification Submitted Successfully!</h3>
+              <p>Your payment notification has been sent to the property manager for review.</p>
+              <p>This is a notification, not a receipt or confirmation that the payment has been recorded.</p>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setQrPaymentNotificationSuccess(false);
+                  setQrPaymentNotificationError('');
+                }}
+              >
+                Submit Another Notification
+              </button>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && !qrPaymentNotificationSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Notify Manager of a Payment</h3>
+              </div>
+              <p>Tell the manager about a payment you have made. The manager must review it before it is treated as verified.</p>
+              <form className="crud-form" onSubmit={handleQrPaymentNotificationSubmit}>
+                <label>
+                  Amount paid
+                  <input
+                    type="number"
+                    name="amount"
+                    min="0.01"
+                    step="0.01"
+                    required
+                    value={qrPaymentNotificationForm.amount}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                <label>
+                  Payment method
+                  <select
+                    name="paymentMethod"
+                    value={qrPaymentNotificationForm.paymentMethod}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      paymentMethod: event.target.value,
+                    }))}
+                  >
+                    <option value="Mobile Money">Mobile Money</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+
+                <label>
+                  Transaction reference <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <input
+                    type="text"
+                    name="transactionReference"
+                    maxLength={200}
+                    value={qrPaymentNotificationForm.transactionReference}
+                    onChange={(event) => setQrPaymentNotificationForm((current) => ({
+                      ...current,
+                      transactionReference: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                {qrPaymentNotificationError ? (
+                  <p className="error-text" role="alert">{qrPaymentNotificationError}</p>
+                ) : null}
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="primary-btn"
+                    disabled={qrPaymentNotificationSubmitting}
+                  >
+                    {qrPaymentNotificationSubmitting ? 'Submitting...' : 'Notify Manager'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && qrMoveOutSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+              <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
+              <h3>Move-out Request Submitted Successfully!</h3>
+              <p>Your requested move-out date has been sent to the property manager for review.</p>
+              <p>Submitting a request does not terminate your lease. The manager must review your request.</p>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setQrMoveOutSuccess(false);
+                  setQrMoveOutError('');
+                }}
+              >
+                Submit Another Request
+              </button>
+            </section>
+          ) : null}
+
+          {qrPaymentVerified && !qrMoveOutSuccess ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Request to Move Out</h3>
+              </div>
+              <p>Choose your requested move-out date. Your lease remains active unless it is separately terminated.</p>
+              <form className="crud-form" onSubmit={handleQrMoveOutSubmit}>
+                <label>
+                  Requested move-out date
+                  <input
+                    type="date"
+                    name="requestedMoveOutDate"
+                    required
+                    value={qrMoveOutForm.requestedMoveOutDate}
+                    onChange={(event) => setQrMoveOutForm((current) => ({
+                      ...current,
+                      requestedMoveOutDate: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                <label>
+                  Reason <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <textarea
+                    name="reason"
+                    rows={3}
+                    maxLength={1000}
+                    value={qrMoveOutForm.reason}
+                    onChange={(event) => setQrMoveOutForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))}
+                  />
+                </label>
+
+                {qrMoveOutError ? (
+                  <p className="error-text" role="alert">{qrMoveOutError}</p>
+                ) : null}
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="primary-btn"
+                    disabled={qrMoveOutSubmitting}
+                  >
+                    {qrMoveOutSubmitting ? 'Submitting...' : 'Submit Move-out Request'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+          {qrMaintenanceOpen ? (
+            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+              <div className="panel-header">
+                <h3>Report a maintenance problem</h3>
+              </div>
+
+              <form className="crud-form" onSubmit={handleQrMaintenanceSubmit}>
+                <label>
+                  What is the problem?
+                  <input
+                    type="text"
+                    name="title"
+                    value={qrMaintenanceForm.title}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        title: e.target.value,
+                      }))
+                    }
+                    placeholder="Example: Water leak"
+                    maxLength={200}
+                  />
+                </label>
+
+                <label>
+                  Details <span style={{ fontWeight: 400 }}>(optional)</span>
+                  <textarea
+                    name="description"
+                    value={qrMaintenanceForm.description}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        description: e.target.value,
+                      }))
+                    }
+                    placeholder="Describe what is happening..."
+                    maxLength={5000}
+                    rows={5}
+                  />
+                </label>
+
+                <label>
+                  Priority
+                  <select
+                    name="priority"
+                    value={qrMaintenanceForm.priority}
+                    onChange={(e) =>
+                      setQrMaintenanceForm((current) => ({
+                        ...current,
+                        priority: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Emergency">Emergency</option>
+                  </select>
+                </label>
+
+                <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>
+        <div>
+          <strong>Voice report</strong>
+          <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {!qrRecording ? (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={startQrVoiceRecording}
+              >
+                {qrAudioBlob ? 'Record Again' : 'Record Voice'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={stopQrVoiceRecording}
+              >
+                Stop Recording
+              </button>
+            )}
+
+            {qrAudioBlob ? (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={discardQrVoiceRecording}
+              >
+                Discard Recording
+              </button>
+            ) : null}
+          </div>
+
+          {qrAudioUrl ? (
+            <audio
+              controls
+              src={qrAudioUrl}
+              style={{ width: '100%', marginTop: '8px' }}
+            />
+          ) : null}
+        </div>
+
+        <label>
+          Photo <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input
+            type="file"
+            name="photo"
+            accept="image/*"
+          />
+        </label>
+
+        <label>
+          Video <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input
+            type="file"
+            name="video"
+            accept="video/*"
+          />
+        </label>
+
+        {qrMediaError ? (
+          <div style={{ color: '#b42318', fontSize: '14px' }}>
+            {qrMediaError}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="form-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setQrMaintenanceOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="primary-btn">
+                    Submit Request
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+
   if (!user) {
     return (
       <div className="auth-shell">
@@ -1311,11 +2575,13 @@ const handleLogin = async (event) => {
     ['leases', 'Leases'],
     ['deposits', 'Security Deposits'],
     ['payments', 'Payments'],
+    ['paymentNotifications', 'Payment Notifications'],
+    ['moveOutRequests', 'Move-out Requests'],
     ['maintenance', 'Maintenance'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
     if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return true;
@@ -1392,6 +2658,92 @@ const handleLogin = async (event) => {
   const setUnitValue = (field, value) => setUnitForm((prev) => ({ ...prev, [field]: value }));
   const setTenantValue = (field, value) => setTenantForm((prev) => ({ ...prev, [field]: value }));
   const setPaymentValue = (field, value) => setPaymentForm((prev) => ({ ...prev, [field]: value }));
+  const loadManagerPaymentNotifications = async () => {
+    setPaymentNotificationsLoading(true);
+    setPaymentNotificationsError('');
+    try {
+      const result = await requestJson('/api/manager/payment-notifications');
+      setManagerPaymentNotifications(Array.isArray(result) ? result : []);
+    } catch (err) {
+      setPaymentNotificationsError(err.message || 'Unable to load payment notifications.');
+    } finally {
+      setPaymentNotificationsLoading(false);
+    }
+  };
+
+  const handlePaymentNotificationReview = async (notification, action) => {
+    const notificationId = String(notification.id || '');
+    if (!notificationId) return;
+
+    const actionLabels = {
+      VerifiedManual: 'verify this payment manually',
+      VerifiedAuto: 'verify and record this payment automatically',
+      MarkManuallyRecorded: 'mark this payment as already recorded',
+      Rejected: 'reject this payment notification',
+    };
+    if (!window.confirm(`Are you sure you want to ${actionLabels[action] || 'review this notification'}?`)) {
+      return;
+    }
+
+    setPaymentReviewBusyId(notificationId);
+    setPaymentNotificationsError('');
+    try {
+      await requestJson(`/api/manager/payment-notifications/${encodeURIComponent(notificationId)}`, {
+        method: 'PATCH',
+        body: {
+          action,
+          reviewNote: paymentReviewNote[notificationId] || '',
+        },
+      });
+      await loadManagerPaymentNotifications();
+      setInfoMessage('Payment notification reviewed successfully.');
+    } catch (err) {
+      setPaymentNotificationsError(err.message || 'Unable to review this payment notification.');
+    } finally {
+      setPaymentReviewBusyId('');
+    }
+  };
+
+  const loadManagerMoveOutRequests = async () => {
+    setMoveOutRequestsLoading(true);
+    setMoveOutRequestsError('');
+    try {
+      const result = await requestJson('/api/manager/move-out-requests');
+      setManagerMoveOutRequests(Array.isArray(result?.requests) ? result.requests : []);
+    } catch (err) {
+      setMoveOutRequestsError(err.message || 'Unable to load move-out requests.');
+    } finally {
+      setMoveOutRequestsLoading(false);
+    }
+  };
+
+  const handleMoveOutRequestReview = async (request, action) => {
+    const requestId = String(request.id || '');
+    if (!requestId) return;
+
+    const actionLabel = action === 'Approved' ? 'approve' : 'reject';
+    if (!window.confirm(`Are you sure you want to ${actionLabel} this move-out request? This will not terminate the lease.`)) {
+      return;
+    }
+
+    setMoveOutReviewBusyId(requestId);
+    setMoveOutRequestsError('');
+    try {
+      await requestJson(`/api/manager/move-out-requests/${encodeURIComponent(requestId)}`, {
+        method: 'PATCH',
+        body: {
+          action,
+          reviewNote: moveOutReviewNote[requestId] || '',
+        },
+      });
+      await loadManagerMoveOutRequests();
+      setInfoMessage(`Move-out request ${action.toLowerCase()}. The lease has not been terminated.`);
+    } catch (err) {
+      setMoveOutRequestsError(err.message || 'Unable to review this move-out request.');
+    } finally {
+      setMoveOutReviewBusyId('');
+    }
+  };
   const setMaintenanceValue = (field, value) => setMaintenanceForm((prev) => ({ ...prev, [field]: value }));
 
   return (
@@ -1410,7 +2762,11 @@ const handleLogin = async (event) => {
             <button
               key={key}
               className={activeTab === key ? 'nav-btn active' : 'nav-btn'}
-              onClick={() => setActiveTab(key)}
+              onClick={() => {
+                setActiveTab(key);
+                if (key === 'paymentNotifications') void loadManagerPaymentNotifications();
+                if (key === 'moveOutRequests') void loadManagerMoveOutRequests();
+              }}
             >
               {label}
             </button>
@@ -1497,7 +2853,9 @@ const handleLogin = async (event) => {
                     <div className="mini-list">
                       <div><span>Units</span><strong>{stats.totalUnits ?? 0}</strong></div>
                       <div><span>Vacant</span><strong>{stats.vacantUnits ?? 0}</strong></div>
-                      <div><span>Paid this month</span><strong>{formatCurrency(stats.paidPayments)}</strong></div>
+                      <div><span>Collected this month</span><strong>{formatCurrency(stats.collectedThisMonth ?? 0)}</strong></div>
+                      <div><span>Collected this year</span><strong>{formatCurrency(stats.collectedThisYear ?? 0)}</strong></div>
+                      <div><span>Current month rent paid</span><strong>{formatCurrency(stats.currentMonthRentPaid ?? 0)}</strong></div>
                       <div><span>Outstanding rent</span><strong>{formatCurrency(stats.overduePayments)}</strong></div>
                     </div>
                   </div>
@@ -1608,6 +2966,9 @@ const handleLogin = async (event) => {
                 <section className="panel">
                   <div className="panel-header">
                     <h3>Unit list</h3>
+                    <button type="button" className="small-btn" onClick={printUnitQRCodes}>
+                      Export QR Codes
+                    </button>
                   </div>
                   <div className="table-wrap">
                     {units.length ? (
@@ -2105,6 +3466,16 @@ const handleLogin = async (event) => {
                                       Edit
                                     </button>
 
+                                                                        {['admin', 'manager'].includes(role) &&
+                                    String(lease.status).toLowerCase() === 'active' ? (
+                                      <button
+                                        className="small-btn"
+                                        type="button"
+                                        onClick={() => handleGenerateTenantPin(lease)}
+                                      >
+                                        Generate / Reset Tenant PIN
+                                      </button>
+                                    ) : null}
                                     <button
                                       className="small-btn"
                                       type="button"
@@ -2489,6 +3860,176 @@ const handleLogin = async (event) => {
               </div>
             ) : null}
 
+            {activeTab === 'paymentNotifications' ? (
+              <div className="stacked-sections">
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h2>Payment Notifications</h2>
+                      <p>Review tenant-submitted payment notifications. A notification is not proof that money has been received.</p>
+                    </div>
+                    <button type="button" className="secondary-btn" onClick={loadManagerPaymentNotifications} disabled={paymentNotificationsLoading}>
+                      {paymentNotificationsLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {paymentNotificationsError ? <p className="error-text" role="alert">{paymentNotificationsError}</p> : null}
+
+                  {paymentNotificationsLoading ? (
+                    <p>Loading payment notifications...</p>
+                  ) : managerPaymentNotifications.length === 0 ? (
+                    <EmptyState title="No payment notifications" message="Tenant payment notifications will appear here when submitted." />
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Submitted</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Amount</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                            <th>Status</th>
+                            <th>Review note</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerPaymentNotifications.map((notification) => {
+                            const status = notification.status || 'Pending Review';
+                            const awaitingRentRecording = /verified\s*-\s*awaiting rent recording/i.test(String(status));
+                            const pending = /^pending\b/i.test(String(status));
+                            const busy = paymentReviewBusyId === String(notification.id);
+                            return (
+                              <tr key={notification.id}>
+                                <td>{formatDateTime(notification.submitted_at || notification.created_at)}</td>
+                                <td>{notification.tenant_name || '—'}</td>
+                                <td>{notification.unit_number ?? '—'}</td>
+                                <td>{formatCurrency(notification.amount)}</td>
+                                <td>{notification.payment_method || '—'}</td>
+                                <td>{notification.transaction_reference || '—'}</td>
+                                <td>
+  <span className={`tag ${getStatusClass(status)}`}>{status}</span>
+</td>
+<td>
+  {pending ? (
+    <textarea
+      aria-label={`Review note for payment notification ${notification.id}`}
+      rows="2"
+      maxLength="1000"
+      value={paymentReviewNote[notification.id] || ''}
+      onChange={(event) => setPaymentReviewNote((previous) => ({
+        ...previous,
+        [notification.id]: event.target.value,
+      }))}
+    />
+  ) : (
+    notification.review_note || '—'
+  )}
+</td>
+<td>
+  {pending ? (
+    <div className="form-actions">
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedManual')}>Verify manually</button>
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedAuto')}>Verify and record</button>
+      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'Rejected')}>Reject</button>
+    </div>
+  ) : awaitingRentRecording ? (
+    <div className="form-actions">
+      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'MarkManuallyRecorded')}>Already recorded</button>
+    </div>
+  ) : 'Reviewed'}
+  {busy ? <p>Saving review...</p> : null}
+</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
+
+            {activeTab === 'moveOutRequests' ? (
+              <div className="stacked-sections">
+                <section className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h2>Move-out Requests</h2>
+                      <p>Review requested move-out dates. Approving a request does not automatically terminate the lease.</p>
+                    </div>
+                    <button type="button" className="secondary-btn" onClick={loadManagerMoveOutRequests} disabled={moveOutRequestsLoading}>
+                      {moveOutRequestsLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {moveOutRequestsError ? <p className="error-text" role="alert">{moveOutRequestsError}</p> : null}
+
+                  {moveOutRequestsLoading ? (
+                    <p>Loading move-out requests...</p>
+                  ) : managerMoveOutRequests.length === 0 ? (
+                    <EmptyState title="No move-out requests" message="Tenant move-out requests will appear here when submitted." />
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Submitted</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Requested date</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Review note</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerMoveOutRequests.map((request) => {
+                            const status = request.status || 'Pending Review';
+                            const pending = /pending/i.test(String(status));
+                            const busy = moveOutReviewBusyId === String(request.id);
+                            return (
+                              <tr key={request.id}>
+                                <td>{formatDateTime(request.submitted_at)}</td>
+                                <td>{request.tenant_name || request.tenant_id || '—'}</td>
+                                <td>{request.unit_number ?? '—'}</td>
+                                <td>{request.requested_move_out_date || '—'}</td>
+                                <td>{request.reason || '—'}</td>
+                                <td><span className={`tag ${getStatusClass(status)}`}>{status}</span></td>
+                                <td>
+                                  {pending ? (
+                                    <textarea
+                                      aria-label={`Review note for move-out request ${request.id}`}
+                                      rows="2"
+                                      maxLength="1000"
+                                      value={moveOutReviewNote[request.id] || ''}
+                                      onChange={(event) => setMoveOutReviewNote((previous) => ({ ...previous, [request.id]: event.target.value }))}
+                                    />
+                                  ) : (request.review_note || '—')}
+                                </td>
+                                <td>
+                                  {pending ? (
+                                    <div className="form-actions">
+                                      <button type="button" className="small-btn" disabled={busy} onClick={() => handleMoveOutRequestReview(request, 'Approved')}>Approve</button>
+                                      <button type="button" className="small-btn danger" disabled={busy} onClick={() => handleMoveOutRequestReview(request, 'Rejected')}>Reject</button>
+                                    </div>
+                                  ) : 'Reviewed'}
+                                  {busy ? <p>Saving review...</p> : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
             {activeTab === 'maintenance' ? (
               <div className="stacked-sections">
                 <section className="panel">
@@ -2681,6 +4222,7 @@ const handleLogin = async (event) => {
                                 {String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'resolved' && (
                                   <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Completed')}>Complete</button>
                                 )}
+                                <button className="small-btn" onClick={() => viewMaintenanceEvidence(item)}>View Attachments</button>
                                 <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
                               </td>

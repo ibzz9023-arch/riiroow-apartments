@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
+import argon2 from 'argon2';
 import { supabase, hasSupabase } from './supabaseClient.js';
-import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord } from './store.js';
+import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord, summarizeCollections } from './store.js';
 
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,12 +15,20 @@ const normalizeTenantName = (value) =>
 const assignmentError = (message) => Object.assign(new Error(message), { code: 'TENANT_ASSIGNMENT_VALIDATION' });
 const hashPassword = (value) =>
   crypto.pbkdf2Sync(String(value ?? ''), 'riiroow-apartments-v1', 100000, 64, 'sha512').toString('hex');
-const passwordMatches = (storedPassword, candidatePassword) => {
+const passwordMatches = async (storedPassword, candidatePassword) => {
   const stored = String(storedPassword ?? '');
   const candidate = String(candidatePassword ?? '');
 
   if (!stored || !candidate) {
     return false;
+  }
+
+  if (stored.startsWith('$argon2')) {
+    try {
+      return await argon2.verify(stored, candidate);
+    } catch {
+      return false;
+    }
   }
 
   return stored === candidate || stored === hashPassword(candidate) || hashPassword(stored) === hashPassword(candidate);
@@ -62,6 +71,7 @@ const toLegacyLease = (row = {}) => ({
   id: row.id,
   tenantId: row.tenant_id ?? row.tenantId,
   unitId: row.unit_id ?? row.unitId ?? null,
+  propertyId: row.property_id ?? row.propertyId ?? null,
   unitNumber: row.unit_number ?? row.unitNumber,
   startDate: row.start_date ?? row.startDate,
   endDate: row.end_date ?? row.endDate,
@@ -284,7 +294,7 @@ const ensureSupabaseDataExists = async () => {
   ]);
 
   if ((!units || units.length === 0) || (!tenants || tenants.length === 0) || (!users || users.length === 0)) {
-    await upsertSeedData();
+    // Automatic demo seeding disabled to protect existing database data.
   }
 };
 
@@ -310,6 +320,7 @@ export const getDashboard = async () => {
       const vacantUnits = totalUnits - occupiedUnits;
       const totalMonthlyRent = units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
       const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.paidAmount || 0), 0);
+      const collectionStats = summarizeCollections(payments);
       const totalOutstanding = payments.filter((payment) => payment.status === 'Outstanding').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
       const totalOverdue = payments.filter((payment) => payment.status === 'Overdue').reduce((sum, payment) => sum + Number(payment.remainingAmount || 0), 0);
       const openMaintenance = maintenance.filter((item) => item.status !== 'Resolved').length;
@@ -321,6 +332,7 @@ export const getDashboard = async () => {
           vacantUnits,
           totalMonthlyRent,
           paidPayments: totalPaid,
+          ...collectionStats,
           totalOutstanding,
           totalOverdue,
           overduePayments: totalOutstanding + totalOverdue,
@@ -639,7 +651,14 @@ export const loginUser = async ({ email, password }) => {
 
       if (error) throw error;
 
-      const matchingUser = (data || []).find((entry) => passwordMatches(entry.password, password));
+      let matchingUser = null;
+      for (const entry of data || []) {
+        if (await passwordMatches(entry.password, password)) {
+          matchingUser = entry;
+          break;
+        }
+      }
+
       if (!matchingUser) {
         return null;
       }
@@ -657,9 +676,16 @@ export const loginUser = async ({ email, password }) => {
   }
 
   const state = loadData();
-  const user = state.users.find(
-    (entry) => entry.email.toLowerCase() === String(email || '').toLowerCase() && passwordMatches(entry.password, password)
-  );
+  let user = null;
+  for (const entry of state.users) {
+    if (
+      entry.email.toLowerCase() === String(email || '').toLowerCase()
+      && await passwordMatches(entry.password, password)
+    ) {
+      user = entry;
+      break;
+    }
+  }
 
   if (!user) {
     return null;
@@ -1101,16 +1127,50 @@ export const updateEntity = async (entityName, id, payload) => {
 
 export const deleteEntity = async (entityName, id) => {
   if (supabase) {
+    if (entityName === 'tenants') {
+      const [leasesResult, paymentsResult] = await Promise.all([
+        supabase.from('leases').select('id').eq('tenant_id', id).limit(1),
+        supabase.from('payments').select('id').eq('tenant_id', id).limit(1),
+      ]);
+
+      if (leasesResult.error) throw leasesResult.error;
+      if (paymentsResult.error) throw paymentsResult.error;
+
+      if ((leasesResult.data || []).length || (paymentsResult.data || []).length) {
+        throw Object.assign(
+          new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+          { code: 'TENANT_HAS_HISTORY' },
+        );
+      }
+    }
+
     try {
       const { error } = await supabase.from(entityName).delete().eq('id', id);
       if (error) throw error;
       return true;
     } catch (error) {
-      console.warn('Supabase delete failed, removing from local fallback store.', error?.message || error);
+      console.error('Supabase delete failed; deletion was not completed.', error?.message || error);
+      throw error;
     }
   }
 
   const state = loadData();
+
+  if (entityName === 'tenants') {
+    const tenantId = String(id);
+    const hasRelatedRecord = (entries = []) =>
+      (entries || []).some(
+        (entry) => String(entry.tenant_id ?? entry.tenantId ?? '') === tenantId,
+      );
+
+    if (hasRelatedRecord(state.leases) || hasRelatedRecord(state.payments)) {
+      throw Object.assign(
+        new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+        { code: 'TENANT_HAS_HISTORY' },
+      );
+    }
+  }
+
   const list = state[entityName] || [];
   state[entityName] = list.filter((entry) => entry.id !== id);
   saveData(state);
