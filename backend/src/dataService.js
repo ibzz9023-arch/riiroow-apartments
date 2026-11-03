@@ -1138,7 +1138,7 @@ export const deleteEntity = async (entityName, id) => {
 
       if ((leasesResult.data || []).length || (paymentsResult.data || []).length) {
         throw Object.assign(
-          new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+          new Error('Tenants with historical records cannot be deleted. Terminate the lease instead to preserve records.'),
           { code: 'TENANT_HAS_HISTORY' },
         );
       }
@@ -1165,7 +1165,7 @@ export const deleteEntity = async (entityName, id) => {
 
     if (hasRelatedRecord(state.leases) || hasRelatedRecord(state.payments)) {
       throw Object.assign(
-        new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+        new Error('Tenants with historical records cannot be deleted. Terminate the lease instead to preserve records.'),
         { code: 'TENANT_HAS_HISTORY' },
       );
     }
