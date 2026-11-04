@@ -98,7 +98,8 @@ test('Supabase tenant deletion is blocked when lease history exists', async () =
     deleteEntity('tenants', 'tenant-1'),
     (error) => {
       assert.equal(error.code, 'TENANT_HAS_HISTORY');
-      assert.match(error.message, /lease or payment history/i);
+      assert.match(error.message, /tenants with historical records cannot be deleted/i);
+      assert.match(error.message, /terminate the lease/i);
       return true;
     },
   );

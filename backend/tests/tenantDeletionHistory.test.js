@@ -42,7 +42,8 @@ test('tenant with lease history cannot be deleted and local data remains unchang
     deleteEntity('tenants', tenant.id),
     (error) => {
       assert.equal(error.code, 'TENANT_HAS_HISTORY');
-      assert.match(error.message, /lease or payment history/i);
+      assert.match(error.message, /tenants with historical records cannot be deleted/i);
+      assert.match(error.message, /terminate the lease/i);
       return true;
     },
   );

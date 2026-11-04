@@ -1,10 +1,14 @@
 import crypto from 'node:crypto';
 import argon2 from 'argon2';
 import { supabase, hasSupabase } from './supabaseClient.js';
-import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord, summarizeCollections } from './store.js';
+import { loadData, saveData, seedState, summarizeDashboard, calculatePaymentStatus, normalizePaymentRecord, summarizeCollections, findLocalUserById, readLocalUsers } from './store.js';
 
 const propertyName = 'Riiroow Apartments';
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const localAuthenticationEnabled = () =>
+  process.env.RIIROOW_LOCAL_AUTH === 'true' &&
+  process.env.NODE_ENV !== 'production' &&
+  !process.env.RAILWAY_ENVIRONMENT;
 const normalizeRoleValue = (value) => String(value || '').trim();
 const normalizeTenantName = (value) =>
   String(value ?? '')
@@ -640,45 +644,63 @@ export const getUsers = async () => {
   return loadData().users;
 };
 
-export const loginUser = async ({ email, password }) => {
+export const getAuthenticatedUserById = async (id) => {
   if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', String(email).toLowerCase())
-        .limit(20);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, role, is_active')
+      .eq('id', id)
+      .maybeSingle();
 
-      if (error) throw error;
-
-      let matchingUser = null;
-      for (const entry of data || []) {
-        if (await passwordMatches(entry.password, password)) {
-          matchingUser = entry;
-          break;
-        }
-      }
-
-      if (!matchingUser) {
-        return null;
-      }
-
-      const user = toLegacyUser(matchingUser);
-      const { password: _password, ...safeUser } = user;
-      return {
-        user: safeUser,
-        token: `demo-token-${safeUser.role}`,
-        permissions: safeUser.permissions,
-      };
-    } catch (error) {
-      console.warn('Supabase login failed, using local fallback auth.', error?.message || error);
-    }
+    if (error) throw error;
+    return data;
   }
 
-  const state = loadData();
+  if (!localAuthenticationEnabled()) {
+    throw new Error('Local authentication is disabled; configure the user database or explicitly enable local development auth.');
+  }
+
+  return findLocalUserById(id);
+};
+
+export const loginUser = async ({ email, password }) => {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', String(email).toLowerCase())
+      .limit(20);
+
+    if (error) throw error;
+
+    let matchingUser = null;
+    for (const entry of data || []) {
+      if (entry.is_active === true && await passwordMatches(entry.password, password)) {
+        matchingUser = entry;
+        break;
+      }
+    }
+
+    if (!matchingUser) {
+      return null;
+    }
+
+    const user = toLegacyUser(matchingUser);
+    const { password: _password, ...safeUser } = user;
+    return {
+      user: safeUser,
+      permissions: safeUser.permissions,
+    };
+  }
+
+  if (!localAuthenticationEnabled()) {
+    throw new Error('Local authentication is disabled; configure the user database or explicitly enable local development auth.');
+  }
+
   let user = null;
-  for (const entry of state.users) {
+  for (const entry of readLocalUsers()) {
     if (
+      entry.is_active === true &&
       entry.email.toLowerCase() === String(email || '').toLowerCase()
       && await passwordMatches(entry.password, password)
     ) {
@@ -694,7 +716,6 @@ export const loginUser = async ({ email, password }) => {
   const { password: _password, ...safeUser } = user;
   return {
     user: safeUser,
-    token: `demo-token-${safeUser.role}`,
     permissions: safeUser.permissions,
   };
 };
@@ -1138,7 +1159,7 @@ export const deleteEntity = async (entityName, id) => {
 
       if ((leasesResult.data || []).length || (paymentsResult.data || []).length) {
         throw Object.assign(
-          new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+          new Error('Tenants with historical records cannot be deleted. Terminate the lease instead to preserve records.'),
           { code: 'TENANT_HAS_HISTORY' },
         );
       }
@@ -1165,7 +1186,7 @@ export const deleteEntity = async (entityName, id) => {
 
     if (hasRelatedRecord(state.leases) || hasRelatedRecord(state.payments)) {
       throw Object.assign(
-        new Error('This tenant has lease or payment history and cannot be deleted. Terminate the lease instead to preserve records.'),
+        new Error('Tenants with historical records cannot be deleted. Terminate the lease instead to preserve records.'),
         { code: 'TENANT_HAS_HISTORY' },
       );
     }
