@@ -69,6 +69,7 @@ const toLegacyTenant = (row = {}) => ({
   phone: row.phone,
   moveInDate: row.move_in_date ?? row.moveInDate,
   status: row.status ?? 'Active',
+  photoStoragePath: row.photo_storage_path ?? row.photoStoragePath ?? null,
 });
 
 const toLegacyLease = (row = {}) => ({
@@ -389,6 +390,48 @@ export const getTenants = async () => {
   return loadData().tenants.map(toLegacyTenant);
 };
 
+export const getTenantPhotoRecord = async (tenantId) => {
+  if (!supabase) {
+    throw Object.assign(new Error('Tenant photo database storage is unavailable.'), { code: 'TENANT_PHOTO_STORAGE_UNAVAILABLE' });
+  }
+
+  const propertyId = await ensureProperty();
+  if (!propertyId) {
+    throw Object.assign(new Error('Riiroow property could not be identified.'), { code: 'TENANT_PROPERTY_UNAVAILABLE' });
+  }
+
+  const { data, error } = await supabase
+    .from('tenants')
+    .select('id, photo_storage_path')
+    .eq('id', tenantId)
+    .eq('property_id', propertyId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+};
+
+export const updateTenantPhotoStoragePath = async (tenantId, storagePath) => {
+  if (!supabase) {
+    throw Object.assign(new Error('Tenant photo database storage is unavailable.'), { code: 'TENANT_PHOTO_STORAGE_UNAVAILABLE' });
+  }
+
+  const propertyId = await ensureProperty();
+  if (!propertyId) {
+    throw Object.assign(new Error('Riiroow property could not be identified.'), { code: 'TENANT_PROPERTY_UNAVAILABLE' });
+  }
+
+  const { data, error } = await supabase
+    .from('tenants')
+    .update({ photo_storage_path: storagePath })
+    .eq('id', tenantId)
+    .eq('property_id', propertyId)
+    .select('id, photo_storage_path')
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+};
 export const getTenantPayments = async (tenantId) => {
   if (supabase) {
     try {
