@@ -181,6 +181,105 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
+
+function LeaseDocumentsPublicPage({ accessToken }) {
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const endpoint = `${apiBaseUrl}/api/public/lease-documents/${encodeURIComponent(accessToken)}`;
+
+    fetch(endpoint, {
+      method: 'GET',
+      credentials: 'omit',
+      headers: { Accept: 'application/json' },
+      referrerPolicy: 'no-referrer',
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'This document link is invalid or unavailable.');
+        return data;
+      })
+      .then((data) => {
+        if (!active) return;
+        setDocuments(Array.isArray(data.documents) ? data.documents : []);
+        setError('');
+      })
+      .catch((fetchError) => {
+        if (active) setError(fetchError.message || 'Unable to load lease documents.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
+
+  const formatSize = (bytes) => {
+    const value = Number(bytes || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="auth-shell">
+      <main className="auth-card" style={{ maxWidth: '760px', width: '100%' }}>
+        <div className="brand-header">
+          <div className="brand-mark">
+            <img src={`${import.meta.env.BASE_URL}riiroow-logo.png`} alt="Riiroow Apartments logo" />
+          </div>
+          <div className="brand-copy">
+            <p className="eyebrow">Riiroow Apartments</p>
+            <h1>Lease Documents</h1>
+          </div>
+        </div>
+        <div className="auth-intro">
+          Scanned documents shared for this lease.
+        </div>
+
+        {loading ? <p role="status">Loading documents…</p> : null}
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
+
+        {!loading && !error && documents.length === 0 ? (
+          <p>No documents have been added to this lease yet.</p>
+        ) : null}
+
+        {!loading && !error && documents.length ? (
+          <div className="stacked-sections">
+            {documents.map((document) => (
+              <section className="panel" key={document.id}>
+                <strong>{document.originalName}</strong>
+                <p className="muted">
+                  {document.mimeType} · {formatSize(document.fileSize)}
+                  {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
+                </p>
+                <div className="form-actions">
+                  <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">
+                    Preview
+                  </a>
+                  <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">
+                    Download
+                  </a>
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : null}
+
+        <p className="muted" style={{ marginTop: '20px' }}>
+          Anyone with this QR code or link can view these documents until property management revokes or regenerates the link.
+        </p>
+      </main>
+    </div>
+  );
+}
+
 function App() {
 const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
@@ -222,6 +321,16 @@ const [user, setUser] = useState(null);
     transactionDate: todayIso(),
     notes: '',
   });
+  const [selectedLeaseForDocuments, setSelectedLeaseForDocuments] = useState(null);
+  const [leaseDocuments, setLeaseDocuments] = useState([]);
+  const [leaseDocumentsLoading, setLeaseDocumentsLoading] = useState(false);
+  const [leaseDocumentsError, setLeaseDocumentsError] = useState('');
+  const [leaseDocumentFiles, setLeaseDocumentFiles] = useState([]);
+  const [leaseDocumentsUploading, setLeaseDocumentsUploading] = useState(false);
+  const [leaseDocumentAccessStatus, setLeaseDocumentAccessStatus] = useState({ enabled: false, revokedAt: null });
+  const [leaseDocumentAccessUrl, setLeaseDocumentAccessUrl] = useState('');
+  const [leaseDocumentQrDataUrl, setLeaseDocumentQrDataUrl] = useState('');
+  const [leaseDocumentAccessBusy, setLeaseDocumentAccessBusy] = useState(false);
 
   const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
   const [qrMaintenanceSuccess, setQrMaintenanceSuccess] = useState(false);
@@ -363,6 +472,8 @@ const [user, setUser] = useState(null);
   };
   const qrPathMatch = window.location.pathname.match(/\/qr\/([^/]+)/i);
   const qrUnitNumber = qrPathMatch ? decodeURIComponent(qrPathMatch[1]) : '';
+  const leaseDocumentsPathMatch = window.location.pathname.match(/\/lease-documents\/([^/]+)\/?$/i);
+  const leaseDocumentsToken = leaseDocumentsPathMatch ? leaseDocumentsPathMatch[1] : '';
 
 
   const requestJson = async (path, options = {}) => {
@@ -403,7 +514,126 @@ const [user, setUser] = useState(null);
 
     return data;
   };
-    const viewMaintenanceEvidence = async (item) => {
+
+  const refreshLeaseDocuments = async (leaseId) => {
+    const data = await requestJson(`/api/leases/${encodeURIComponent(leaseId)}/documents`);
+    setLeaseDocuments(Array.isArray(data.documents) ? data.documents : []);
+    setLeaseDocumentAccessStatus(data.access || { enabled: false, revokedAt: null });
+    return data;
+  };
+
+  const openLeaseDocuments = async (lease) => {
+    setSelectedLeaseForDocuments(lease);
+    setLeaseDocuments([]);
+    setLeaseDocumentFiles([]);
+    setLeaseDocumentsError('');
+    setLeaseDocumentAccessStatus({ enabled: false, revokedAt: null });
+    setLeaseDocumentAccessUrl('');
+    setLeaseDocumentQrDataUrl('');
+    setLeaseDocumentsLoading(true);
+    try {
+      await refreshLeaseDocuments(lease.id);
+    } catch (documentError) {
+      setLeaseDocumentsError(documentError.message || 'Unable to load lease documents.');
+    } finally {
+      setLeaseDocumentsLoading(false);
+    }
+  };
+
+  const handleLeaseDocumentsUpload = async (event) => {
+    event.preventDefault();
+    if (!selectedLeaseForDocuments || !leaseDocumentFiles.length) return;
+
+    const formElement = event.currentTarget;
+    setLeaseDocumentsError('');
+    setLeaseDocumentsUploading(true);
+    try {
+      const formData = new FormData();
+      leaseDocumentFiles.forEach((file) => formData.append('documents', file));
+      await requestJson(`/api/leases/${encodeURIComponent(selectedLeaseForDocuments.id)}/documents`, {
+        method: 'POST',
+        body: formData,
+      });
+      setLeaseDocumentFiles([]);
+      formElement.reset();
+      setInfoMessage('Lease documents uploaded successfully.');
+      try {
+        await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+      } catch {
+        setLeaseDocumentsError('The upload succeeded, but the document list could not be refreshed. Close and reopen this lease to reload it.');
+      }
+    } catch (uploadError) {
+      setLeaseDocumentsError(uploadError.message || 'Unable to upload lease documents.');
+    } finally {
+      setLeaseDocumentsUploading(false);
+    }
+  };
+
+  const prepareLeaseDocumentAccess = async (regenerate = false) => {
+    if (!selectedLeaseForDocuments) return;
+    if (regenerate && !window.confirm('Regenerate this lease document link? The previous QR code and every previously printed copy will stop working.')) {
+      return;
+    }
+
+    setLeaseDocumentAccessBusy(true);
+    setLeaseDocumentsError('');
+    try {
+      const data = await requestJson(
+        `/api/leases/${encodeURIComponent(selectedLeaseForDocuments.id)}/documents/access`,
+        {
+          method: 'POST',
+          body: regenerate ? { regenerate: true } : {},
+        }
+      );
+      const url = new URL(`${import.meta.env.BASE_URL}lease-documents/${data.token}`, window.location.origin).toString();
+      const qrDataUrl = await QRCode.toDataURL(url, {
+        width: 240,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+      });
+      setLeaseDocumentAccessUrl(url);
+      setLeaseDocumentQrDataUrl(qrDataUrl);
+      setLeaseDocumentAccessStatus({ enabled: true, revokedAt: null });
+    } catch (accessError) {
+      setLeaseDocumentsError(accessError.message || 'Unable to prepare the lease document link.');
+    } finally {
+      setLeaseDocumentAccessBusy(false);
+    }
+  };
+
+  const revokeLeaseDocumentAccess = async () => {
+    if (!selectedLeaseForDocuments) return;
+    if (!window.confirm('Revoke this lease document link? Anyone using the old QR code will lose access.')) return;
+
+    setLeaseDocumentAccessBusy(true);
+    setLeaseDocumentsError('');
+    try {
+      await requestJson(
+        `/api/leases/${encodeURIComponent(selectedLeaseForDocuments.id)}/documents/access`,
+        { method: 'DELETE' }
+      );
+      setLeaseDocumentAccessStatus({ enabled: false, revokedAt: new Date().toISOString() });
+      setLeaseDocumentAccessUrl('');
+      setLeaseDocumentQrDataUrl('');
+      setInfoMessage('Lease document link revoked.');
+    } catch (accessError) {
+      setLeaseDocumentsError(accessError.message || 'Unable to revoke the lease document link.');
+    } finally {
+      setLeaseDocumentAccessBusy(false);
+    }
+  };
+
+  const copyLeaseDocumentLink = async () => {
+    if (!leaseDocumentAccessUrl) return;
+    try {
+      await navigator.clipboard.writeText(leaseDocumentAccessUrl);
+      setInfoMessage('Lease document link copied.');
+    } catch {
+      setLeaseDocumentsError('Copy was blocked by the browser. Select and copy the link shown above.');
+    }
+  };
+
+  const viewMaintenanceEvidence = async (item) => {
     const popup = window.open('', '_blank');
 
     if (!popup) {
@@ -1696,6 +1926,29 @@ const handleLogin = async (event) => {
       // Use the tenant data already loaded in the dashboard.
     }
 
+    let leaseDocumentsQrDataUrl = '';
+    let leaseDocumentsQrUnavailableReason = '';
+    const leaseIdIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(lease.id || ''));
+    if (leaseIdIsUuid) {
+      try {
+        const access = await requestJson(`/api/leases/${encodeURIComponent(lease.id)}/documents/access`, {
+          method: 'POST',
+          body: {},
+        });
+        const publicDocumentUrl = new URL(`${import.meta.env.BASE_URL}lease-documents/${access.token}`, window.location.origin).toString();
+        leaseDocumentsQrDataUrl = await QRCode.toDataURL(publicDocumentUrl, {
+          width: 220,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+        });
+      } catch (accessError) {
+        leaseDocumentsQrUnavailableReason = 'The lease document QR could not be generated. Management must check the migration, private Storage setup, and link status before printing a QR-enabled copy.';
+        setError(accessError.message || 'Unable to prepare the lease document QR code. Please check the migration and try again.');
+      }
+    } else {
+      leaseDocumentsQrUnavailableReason = 'The lease document QR is unavailable for local-only records. Use a Supabase-backed lease to create a permanent document archive.';
+    }
+
     const tenantPhotoUrl = tenant?.photoUrl || '';
     const tenantName = tenant?.name || lease.tenantId || '—';
     const tenantEmail = tenant?.email || '—';
@@ -1872,6 +2125,29 @@ const handleLogin = async (event) => {
       font-weight: 700;
     }
 
+    .lease-documents-qr {
+      margin-top: 28px;
+      padding-top: 18px;
+      border-top: 1px solid #ccc;
+      text-align: center;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .lease-documents-qr img {
+      width: 170px;
+      height: 170px;
+      object-fit: contain;
+      margin: 10px auto;
+    }
+
+    .lease-documents-qr p {
+      max-width: 520px;
+      margin: 6px auto;
+      font-size: 11px;
+      color: #555;
+    }
+
     @media print {
       body {
         padding: 0;
@@ -1977,6 +2253,15 @@ const handleLogin = async (event) => {
   <div class="footer">
     Riiroow Apartment Management — Residential Lease Agreement
   </div>
+
+  <section class="lease-documents-qr">
+    <h2>Lease Document Archive</h2>
+    ${leaseDocumentsQrDataUrl
+      ? `<img src="${safe(leaseDocumentsQrDataUrl)}" alt="QR code to this lease's scanned documents">
+         <p>Scan this code to view scanned documents attached to this specific lease.</p>
+         <p>Anyone with this QR code or link can access these documents until management revokes or regenerates the link.</p>`
+      : `<p>${safe(leaseDocumentsQrUnavailableReason)}</p>`}
+  </section>
 </body>
 </html>`);
 
@@ -2605,6 +2890,10 @@ const handleLogin = async (event) => {
     );
   }
 
+
+  if (leaseDocumentsToken) {
+    return <LeaseDocumentsPublicPage accessToken={leaseDocumentsToken} />;
+  }
 
   if (!user) {
     return (
@@ -3588,6 +3877,13 @@ const handleLogin = async (event) => {
                                     >
                                       Print Lease
                                     </button>
+                                    <button
+                                      className="small-btn"
+                                      type="button"
+                                      onClick={() => openLeaseDocuments(lease)}
+                                    >
+                                      Documents
+                                    </button>
 
                                     {String(lease.status).toLowerCase() !== 'terminated' ? (
                                       <button
@@ -3624,6 +3920,128 @@ const handleLogin = async (event) => {
                     )}
                   </div>
                 </section>
+
+                {selectedLeaseForDocuments ? (
+                  <section className="panel">
+                    <div className="panel-header">
+                      <div>
+                        <h3>Documents — Unit {selectedLeaseForDocuments.unitNumber}</h3>
+                        <p>Files stay attached to this lease, including after the tenant signs a later lease.</p>
+                      </div>
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={() => {
+                          setSelectedLeaseForDocuments(null);
+                          setLeaseDocuments([]);
+                                                setLeaseDocumentAccessUrl('');
+                          setLeaseDocumentQrDataUrl('');
+                          setLeaseDocumentsError('');
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    {leaseDocumentsError ? <p className="error-text" role="alert">{leaseDocumentsError}</p> : null}
+                    {leaseDocumentsLoading ? <p role="status">Loading lease documents…</p> : null}
+
+                    {['admin', 'manager'].includes(role) ? (
+                      <form className="crud-form" onSubmit={handleLeaseDocumentsUpload}>
+                        <label>
+                          Add scanned documents (PDF, JPG, PNG; maximum 10 MB each, up to five files)
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                            multiple
+                            onChange={(event) => setLeaseDocumentFiles(Array.from(event.target.files || []))}
+                          />
+                        </label>
+                        {leaseDocumentFiles.length ? (
+                          <p className="muted">{leaseDocumentFiles.length} file(s) selected.</p>
+                        ) : null}
+                        <div className="form-actions">
+                          <button className="primary-btn" type="submit" disabled={!leaseDocumentFiles.length || leaseDocumentsUploading}>
+                            {leaseDocumentsUploading ? 'Uploading…' : 'Upload documents'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+
+                    <div className="stacked-sections">
+                      {leaseDocuments.map((document) => (
+                        <div className="panel" key={document.id}>
+                          <strong>{document.originalName}</strong>
+                          <p className="muted">
+                            {document.mimeType} · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
+                            {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
+                          </p>
+                          <div className="form-actions">
+                            <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
+                            <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                          </div>
+                        </div>
+                      ))}
+                      {!leaseDocumentsLoading && !leaseDocumentsError && !leaseDocuments.length ? (
+                        <EmptyState title="No scanned documents" message="Upload lease scans, signed pages, or supporting documents to keep them with this lease." />
+                      ) : null}
+                    </div>
+
+                    <div className="panel" style={{ marginTop: '16px' }}>
+                      <div className="panel-header">
+                        <h4>Lease QR access</h4>
+                        <span className={`tag ${leaseDocumentAccessStatus.enabled ? 'paid' : 'neutral'}`}>
+                          {leaseDocumentAccessStatus.enabled ? 'Link active' : 'Link not active'}
+                        </span>
+                      </div>
+                      <p className="muted">
+                        Anyone who obtains the QR code or link can view every document attached to this lease. The link does not expire automatically.
+                      </p>
+                      <div className="form-actions">
+                        <button
+                          className="primary-btn"
+                          type="button"
+                          disabled={leaseDocumentAccessBusy}
+                          onClick={() => prepareLeaseDocumentAccess(false)}
+                        >
+                          {leaseDocumentAccessBusy ? 'Please wait…' : 'Show QR / Link'}
+                        </button>
+                        {['admin', 'manager'].includes(role) && (leaseDocumentAccessStatus.enabled || leaseDocumentAccessStatus.revokedAt) ? (
+                          <>
+                            <button
+                              className="small-btn"
+                              type="button"
+                              disabled={leaseDocumentAccessBusy}
+                              onClick={() => prepareLeaseDocumentAccess(true)}
+                            >
+                              Regenerate link
+                            </button>
+                            {leaseDocumentAccessStatus.enabled ? (
+                              <button
+                                className="small-btn danger"
+                                type="button"
+                                disabled={leaseDocumentAccessBusy}
+                                onClick={revokeLeaseDocumentAccess}
+                              >
+                                Revoke link
+                              </button>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </div>
+
+                      {leaseDocumentQrDataUrl ? (
+                        <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                          <img src={leaseDocumentQrDataUrl} alt="Lease document QR code" style={{ width: '190px', maxWidth: '100%' }} />
+                          <p>
+                            <a href={leaseDocumentAccessUrl} target="_blank" rel="noopener noreferrer">{leaseDocumentAccessUrl}</a>
+                          </p>
+                          <button className="small-btn" type="button" onClick={copyLeaseDocumentLink}>Copy link</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             ) : null}
 
