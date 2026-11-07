@@ -9,3 +9,10 @@ frontend/dist/
 
 frontend/.env.production
 frontend/.env.local
+
+backend/.env.staging
+backend/*.pem
+frontend/*.pem
+frontend/src/App.jsx.before-encoding-repair.bak
+frontend/src/App.jsx.encoding-recovery-test
+frontend/src/App.jsx.head-reference.tmp

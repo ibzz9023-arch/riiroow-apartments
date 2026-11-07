@@ -197,6 +197,8 @@ const [user, setUser] = useState(null);
   const [selectedTenantPayments, setSelectedTenantPayments] = useState(null);
   const [unitForm, setUnitForm] = useState(emptyUnitForm);
   const [tenantForm, setTenantForm] = useState(emptyTenantForm);
+  const [tenantPhotoFile, setTenantPhotoFile] = useState(null);
+  const [failedTenantPhotoUrls, setFailedTenantPhotoUrls] = useState({});
   const [leaseForm, setLeaseForm] = useState(emptyLeaseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
@@ -224,7 +226,7 @@ const [user, setUser] = useState(null);
   const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
   const [qrMaintenanceSuccess, setQrMaintenanceSuccess] = useState(false);
   const [qrMaintenanceSubmitting, setQrMaintenanceSubmitting] = useState(false);
-  const [qrPaymentVerificationOpen, setQrPaymentVerificationOpen] = useState(false);
+
   const [qrPaymentPin, setQrPaymentPin] = useState('');
   const [qrPaymentPinError, setQrPaymentPinError] = useState('');
   const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
@@ -382,6 +384,14 @@ const [user, setUser] = useState(null);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      const isTenantQrAction = /^\/api\/public\/qr\/[^/]+\/(maintenance|payment-notification|move-out-request)$/.test(path);
+      if ((response.status === 401 || response.status === 403) && isTenantQrAction) {
+        setQrTenantToken('');
+        setQrPaymentVerified(false);
+        setQrMaintenanceOpen(false);
+        setQrPaymentPin('');
+        setQrPaymentPinError(data.error || 'Your tenant session is no longer valid. Verify your PIN again.');
+      }
       if (response.status === 401 && data.code === 'SESSION_INVALID' && token) {
         setUser(null);
         setToken('');
@@ -1200,22 +1210,58 @@ const handleLogin = async (event) => {
         throw new Error('Tenant name and unit are required.');
       }
 
+      if (tenantPhotoFile) {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(tenantPhotoFile.type)) {
+          throw new Error('Choose a JPEG, PNG, or WebP photo.');
+        }
+        if (tenantPhotoFile.size > 5 * 1024 * 1024) {
+          throw new Error('Tenant photo must not exceed 5 MB.');
+        }
+      }
+
+      let savedTenant;
+      let tenantId = editingTenantId;
+
       if (editingTenantId) {
-        await requestJson(`/api/tenants/${editingTenantId}`, {
+        savedTenant = await requestJson(`/api/tenants/${editingTenantId}`, {
           method: 'PATCH',
           body: payload,
         });
-        setInfoMessage('Tenant updated successfully.');
       } else {
-        await requestJson('/api/tenants', {
+        savedTenant = await requestJson('/api/tenants', {
           method: 'POST',
           body: payload,
         });
-        setInfoMessage('Tenant added successfully.');
+        tenantId = savedTenant?.id;
+      }
+
+      if (tenantPhotoFile) {
+        if (!tenantId) {
+          throw new Error('Tenant was saved, but its ID could not be identified for photo upload.');
+        }
+
+        const formData = new FormData();
+        formData.append('photo', tenantPhotoFile);
+
+        try {
+          await requestJson(`/api/tenants/${tenantId}/photo`, {
+            method: 'POST',
+            body: formData,
+          });
+        } catch (photoError) {
+          setEditingTenantId(tenantId);
+          await fetchDashboard();
+          setInfoMessage('Tenant details were saved, but the photo upload failed. You can retry.');
+          setError(photoError.message);
+          return;
+        }
       }
 
       setTenantForm(emptyTenantForm);
+      setTenantPhotoFile(null);
       setEditingTenantId(null);
+      setInfoMessage(editingTenantId ? 'Tenant updated successfully.' : 'Tenant added successfully.');
       await fetchDashboard();
     } catch (err) {
       setError(err.message);
@@ -1626,21 +1672,34 @@ const handleLogin = async (event) => {
     }, 300);
   };
 
-  const printLease = (lease) => {
-    const tenant = tenants.find(
-      (item) => String(item.id) === String(lease.tenantId)
-    );
-
-    const tenantName = tenant?.name || lease.tenantId || '—';
-    const tenantEmail = tenant?.email || '—';
-    const tenantPhone = tenant?.phone || '—';
-
+  const printLease = async (lease) => {
     const printWindow = window.open('', '_blank', 'width=900,height=1000');
 
     if (!printWindow) {
       setError('Please allow pop-ups to print the lease document.');
       return;
     }
+
+    let tenant = tenants.find(
+      (item) => String(item.id) === String(lease.tenantId)
+    );
+
+    try {
+      const latestTenants = await requestJson('/api/tenants');
+      if (Array.isArray(latestTenants)) {
+        const refreshedTenant = latestTenants.find(
+          (item) => String(item.id) === String(lease.tenantId)
+        );
+        if (refreshedTenant) tenant = refreshedTenant;
+      }
+    } catch {
+      // Use the tenant data already loaded in the dashboard.
+    }
+
+    const tenantPhotoUrl = tenant?.photoUrl || '';
+    const tenantName = tenant?.name || lease.tenantId || '—';
+    const tenantEmail = tenant?.email || '—';
+    const tenantPhone = tenant?.phone || '—';
 
     const safe = (value) =>
       String(value ?? '—')
@@ -1731,6 +1790,21 @@ const handleLogin = async (event) => {
       border-bottom: 1px solid #bbb;
     }
 
+    .tenant-photo-wrap {
+      margin: 0 0 14px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .tenant-photo {
+      display: block;
+      width: 104px;
+      height: 124px;
+      object-fit: cover;
+      object-position: center;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
     .details {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1841,6 +1915,7 @@ const handleLogin = async (event) => {
   </div>
 
   <h2>1. Tenant Information</h2>
+  ${tenantPhotoUrl ? '<div class="tenant-photo-wrap"><img class="tenant-photo" src="' + safe(tenantPhotoUrl) + '" alt="Tenant photo"></div>' : ''}
   <div class="details">
     <div class="detail">
       <span class="label">Tenant Name:</span> ${safe(tenantName)}
@@ -1908,9 +1983,23 @@ const handleLogin = async (event) => {
     printWindow.document.close();
     printWindow.focus();
 
-    setTimeout(() => {
+    const imageLoads = Array.from(printWindow.document.images).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        image.addEventListener('load', resolve, { once: true });
+        image.addEventListener('error', resolve, { once: true });
+      });
+    });
+
+    await Promise.race([
+      Promise.all(imageLoads),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+
+    if (!printWindow.closed) {
+      printWindow.focus();
       printWindow.print();
-    }, 300);
+    }
   };
 
   const beginEditLease = (lease) => {
@@ -2143,28 +2232,20 @@ const handleLogin = async (event) => {
             Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
           </div>
 
-          <div className="stacked-sections">
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => { setQrMaintenanceSuccess(false); setQrMaintenanceOpen(true); }}
-            >
-              Maintenance Request
-            </button>
-
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => {
-                setQrPaymentPin('');
-                setQrPaymentPinError('');
-                setQrPaymentVerified(false);
-                setQrPaymentVerificationOpen(true);
-              }}
-            >
-              Tenant PIN Verification
-            </button>
-          </div>
+          {qrTenantToken ? (
+            <div className="stacked-sections">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrMaintenanceSuccess(false);
+                  setQrMaintenanceOpen(true);
+                }}
+              >
+                Maintenance Request
+              </button>
+            </div>
+          ) : null}
 
           {qrMaintenanceSuccess ? (
             <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
@@ -2179,7 +2260,7 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
-          {qrPaymentVerificationOpen ? (
+          {!qrTenantToken ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Tenant PIN Verification</h3>
@@ -2211,13 +2292,6 @@ const handleLogin = async (event) => {
                   The unit number is guessable and is not strong authentication. This check does not grant access to private records.
                 </p>
                 <div className="form-actions">
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => setQrPaymentVerificationOpen(false)}
-                  >
-                    Back
-                  </button>
                   <button type="submit" className="primary-btn">Verify PIN</button>
                 </div>
               </form>
@@ -2384,7 +2458,7 @@ const handleLogin = async (event) => {
               </form>
             </section>
           ) : null}
-          {qrMaintenanceOpen ? (
+          {qrTenantToken && qrMaintenanceOpen ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Report a maintenance problem</h3>
@@ -2608,6 +2682,7 @@ const handleLogin = async (event) => {
   };
 
   const beginEditTenant = (tenant) => {
+    setTenantPhotoFile(null);
     setEditingTenantId(tenant.id);
     setTenantForm({
       name: tenant.name,
@@ -3074,11 +3149,20 @@ const handleLogin = async (event) => {
                           <option value="Pending">Pending</option>
                         </select>
                       </label>
+                      <label>
+                        Tenant photo (JPEG, PNG or WebP; max 5 MB)
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => setTenantPhotoFile(e.target.files?.[0] || null)}
+                        />
+                        {tenantPhotoFile ? <small>Selected: {tenantPhotoFile.name}</small> : null}
+                      </label>
                     </div>
                     <div className="form-actions">
                       <button type="submit" className="primary-btn">{editingTenantId ? 'Save tenant' : 'Add tenant'}</button>
                       {editingTenantId ? (
-                        <button type="button" className="secondary-btn" onClick={() => { setEditingTenantId(null); setTenantForm(emptyTenantForm); }}>
+                        <button type="button" className="secondary-btn" onClick={() => { setEditingTenantId(null); setTenantForm(emptyTenantForm); setTenantPhotoFile(null); }}>
                           Cancel
                         </button>
                       ) : null}
@@ -3095,6 +3179,7 @@ const handleLogin = async (event) => {
                       <table>
                         <thead>
                           <tr>
+                            <th>Photo</th>
                             <th>Name</th>
                             <th>Unit</th>
                             <th>Email</th>
@@ -3106,6 +3191,21 @@ const handleLogin = async (event) => {
                         <tbody>
                           {tenants.map((tenant) => (
                             <tr key={tenant.id}>
+                              <td>
+                                {tenant.photoUrl && failedTenantPhotoUrls[tenant.id] !== tenant.photoUrl ? (
+                                  <img
+                                    src={tenant.photoUrl}
+                                    alt={`${tenant.name} tenant`}
+                                    width="44"
+                                    height="44"
+                                    style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "50%" }}
+                                    onError={() => setFailedTenantPhotoUrls((previous) => ({
+                                      ...previous,
+                                      [tenant.id]: tenant.photoUrl,
+                                    }))}
+                                  />
+                                ) : '?'}
+                              </td>
                               <td>{tenant.name}</td>
                               <td>{tenant.unitNumber}</td>
                               <td>{tenant.email}</td>
@@ -3186,7 +3286,6 @@ const handleLogin = async (event) => {
                   <div className="panel-header">
                     <h3>{editingLeaseId ? 'Edit lease' : 'Add lease'}</h3>
                   </div>
-
                   <form className="crud-form" onSubmit={handleLeaseSubmit}>
                     <div className="form-grid">
                       <label>

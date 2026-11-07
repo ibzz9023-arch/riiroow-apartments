@@ -32,6 +32,8 @@ import {
   getPayments,
   getTenants,
   getTenantPayments,
+  getTenantPhotoRecord,
+  updateTenantPhotoStoragePath,
   getUnits,
   getUsers,
   loginUser,
@@ -152,6 +154,67 @@ const parseQrMaintenanceMultipart = (req, res, next) => {
   });
 };
 
+const TENANT_PHOTO_BUCKET = 'tenant-photos';
+const TENANT_PHOTO_MAX_SIZE = 5 * 1024 * 1024;
+
+const tenantPhotoMultipart = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: 1, fileSize: TENANT_PHOTO_MAX_SIZE },
+  fileFilter: (req, file, callback) => {
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    const mimeType = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+    if (!allowedTypes.has(mimeType)) {
+      return callback(Object.assign(new Error('Only JPEG, PNG, and WebP photos are allowed.'), { statusCode: 400 }));
+    }
+    callback(null, true);
+  },
+}).single('photo');
+
+const parseTenantPhotoMultipart = (req, res, next) => {
+  tenantPhotoMultipart(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Tenant photo must not exceed 5 MB.' });
+    }
+    return res.status(error.statusCode || 400).json({ error: error.message || 'Invalid tenant photo upload.' });
+  });
+};
+
+const detectTenantPhotoFormat = (buffer) => {
+  if (buffer?.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { mimeType: 'image/jpeg', extension: 'jpg' };
+  }
+  if (buffer?.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { mimeType: 'image/png', extension: 'png' };
+  }
+  if (buffer?.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    return { mimeType: 'image/webp', extension: 'webp' };
+  }
+  return null;
+};
+
+const tenantsWithPhotoUrls = async (tenants, includePhotoUrls = true) => Promise.all(
+  (Array.isArray(tenants) ? tenants : []).map(async (tenant) => {
+    const { photoStoragePath, ...publicTenant } = tenant;
+
+    if (!includePhotoUrls || !photoStoragePath || !supabaseServiceRole) {
+      return { ...publicTenant, photoUrl: null };
+    }
+
+    try {
+      const { data, error } = await supabaseServiceRole
+        .storage.from(TENANT_PHOTO_BUCKET)
+        .createSignedUrl(photoStoragePath, 600);
+
+      if (error) throw error;
+      return { ...publicTenant, photoUrl: data?.signedUrl || null };
+    } catch (photoError) {
+      console.warn('Tenant photo URL could not be created:', photoError?.message || photoError);
+      return { ...publicTenant, photoUrl: null };
+    }
+  })
+);
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
@@ -230,7 +293,11 @@ app.get('/api/users', requireRoles('Admin', 'Manager'), async (req, res) => {
 
 app.get('/api/dashboard', requireRoles('Admin', 'Manager', 'Maintenance', 'Accountant'), async (req, res) => {
   try {
-    res.json(await getDashboard());
+    const dashboard = await getDashboard();
+    const roleCanViewTenantPhotos = ['admin', 'manager', 'accountant']
+      .includes(String(req.auth?.role || '').toLowerCase());
+    dashboard.tenants = await tenantsWithPhotoUrls(dashboard.tenants, roleCanViewTenantPhotos);
+    res.json(dashboard);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ error: 'Unable to load dashboard.' });
@@ -248,13 +315,83 @@ app.get('/api/units', requireRoles('Admin', 'Manager', 'Maintenance', 'Accountan
 
 app.get('/api/tenants', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
   try {
-    res.json(await getTenants());
+    res.json(await tenantsWithPhotoUrls(await getTenants()));
   } catch (error) {
     console.error('Tenants fetch error:', error);
     res.status(500).json({ error: 'Unable to load tenants.' });
   }
 });
 
+app.post('/api/tenants/:tenantId/photo', requireRoles('Admin', 'Manager'), parseTenantPhotoMultipart, async (req, res) => {
+  let uploadedPath = null;
+  let databaseUpdated = false;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Select a tenant photo to upload.' });
+    }
+
+    if (!supabaseServiceRole) {
+      return res.status(503).json({ error: 'Private tenant photo storage is not configured.' });
+    }
+
+    const detected = detectTenantPhotoFormat(req.file.buffer);
+    const claimedMime = String(req.file.mimetype || '').split(';')[0].trim().toLowerCase();
+
+    if (!detected || detected.mimeType !== claimedMime) {
+      return res.status(400).json({ error: 'The selected file is not a valid JPEG, PNG, or WebP image.' });
+    }
+
+    const tenant = await getTenantPhotoRecord(req.params.tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found.' });
+    }
+
+    const bucket = supabaseServiceRole.storage.from(TENANT_PHOTO_BUCKET);
+    const previousPath = tenant.photo_storage_path || null;
+    const newPath = `${req.params.tenantId}/${crypto.randomUUID()}.${detected.extension}`;
+
+    const { error: uploadError } = await bucket.upload(newPath, req.file.buffer, {
+      contentType: detected.mimeType,
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+
+    uploadedPath = newPath;
+
+    const { data: signedData, error: signedError } = await bucket.createSignedUrl(newPath, 600);
+    if (signedError) throw signedError;
+
+    const updatedTenant = await updateTenantPhotoStoragePath(req.params.tenantId, newPath);
+    if (!updatedTenant) {
+      throw Object.assign(new Error('Tenant not found.'), { statusCode: 404 });
+    }
+
+    databaseUpdated = true;
+
+    if (previousPath && previousPath !== newPath) {
+      const { error: removeError } = await bucket.remove([previousPath]);
+      if (removeError) {
+        console.warn('Previous tenant photo could not be removed:', removeError.message);
+      }
+    }
+
+    return res.json({ success: true, photoUrl: signedData.signedUrl });
+  } catch (error) {
+    if (uploadedPath && !databaseUpdated && supabaseServiceRole) {
+      try {
+        await supabaseServiceRole.storage.from(TENANT_PHOTO_BUCKET).remove([uploadedPath]);
+      } catch (cleanupError) {
+        console.warn('Tenant photo upload cleanup failed:', cleanupError?.message || cleanupError);
+      }
+    }
+
+    console.error('Tenant photo upload error:', error);
+    const unavailable = ['TENANT_PHOTO_STORAGE_UNAVAILABLE', 'TENANT_PROPERTY_UNAVAILABLE'].includes(error.code);
+    return res.status(error.statusCode || (unavailable ? 503 : 500))
+      .json({ error: error.statusCode === 404 ? 'Tenant not found.' : 'Unable to save tenant photo.' });
+  }
+});
 app.get('/api/tenants/:tenantId/payments', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
   try {
     const result = await getTenantPayments(req.params.tenantId);
