@@ -29,6 +29,8 @@ const dataService = Object.fromEntries([
   'getPayments',
   'getTenants',
   'getTenantPayments',
+  'getTenantPhotoRecord',
+  'updateTenantPhotoStoragePath',
   'getUnits',
   'getUsers',
   'loginUser',

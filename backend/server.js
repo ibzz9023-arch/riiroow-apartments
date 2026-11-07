@@ -45,6 +45,13 @@ import {
 } from './src/dataService.js';
 import { hasSupabase, supabase, supabaseServiceRole } from './src/supabaseClient.js';
 import {
+  LEASE_DOCUMENT_TOKEN_PATTERN,
+  createLeaseDocumentNonce,
+  deriveLeaseDocumentToken,
+  hashLeaseDocumentToken,
+  leaseDocumentTokenMatchesHash,
+} from './src/leaseDocumentTokens.js';
+import {
   createSessionToken,
   getSessionSecret,
   requireRoles,
@@ -67,7 +74,12 @@ const port = Number(process.env.PORT || 5000);
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const isLeaseDocumentPage = req.path.startsWith('/lease-documents/');
+  res.setHeader('Referrer-Policy', isLeaseDocumentPage ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  if (isLeaseDocumentPage) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  }
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
 });
@@ -152,6 +164,206 @@ const parseQrMaintenanceMultipart = (req, res, next) => {
 
     return res.status(error.statusCode || 400).json({ error: error.message || 'Invalid maintenance media upload.' });
   });
+};
+
+const LEASE_DOCUMENT_BUCKET = 'lease-documents';
+const LEASE_DOCUMENT_MAX_SIZE = 10 * 1024 * 1024;
+const LEASE_DOCUMENT_MAX_FILES = 5;
+const LEASE_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+]);
+const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const leaseDocumentsMultipart = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: LEASE_DOCUMENT_MAX_FILES,
+    fileSize: LEASE_DOCUMENT_MAX_SIZE,
+    fields: 2,
+    fieldSize: 16 * 1024,
+  },
+  fileFilter: (req, file, callback) => {
+    const mimeType = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+    if (!LEASE_DOCUMENT_MIME_TYPES.has(mimeType)) {
+      return callback(Object.assign(
+        new Error('Only PDF, JPG, and PNG lease documents are allowed.'),
+        { statusCode: 400 }
+      ));
+    }
+    callback(null, true);
+  },
+}).array('documents', LEASE_DOCUMENT_MAX_FILES);
+
+const parseLeaseDocumentsMultipart = (req, res, next) => {
+  leaseDocumentsMultipart(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Each lease document must not exceed 10 MB.' });
+    }
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Upload no more than five documents at a time.' });
+    }
+    return res.status(error.statusCode || 400)
+      .json({ error: error.message || 'Invalid lease document upload.' });
+  });
+};
+
+const detectLeaseDocumentFormat = (buffer) => {
+  if (buffer?.length >= 5 && buffer.toString('ascii', 0, 5) === '%PDF-') {
+    return { mimeType: 'application/pdf', extension: 'pdf' };
+  }
+  if (buffer?.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { mimeType: 'image/jpeg', extension: 'jpg' };
+  }
+  if (
+    buffer?.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return { mimeType: 'image/png', extension: 'png' };
+  }
+  return null;
+};
+
+const cleanLeaseDocumentName = (value) =>
+  String(value || 'document')
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, 255) || 'document';
+
+const requireLeaseDocumentStorage = (res) => {
+  if (supabaseServiceRole) return true;
+  res.status(503).json({
+    error: 'Private lease document storage is not configured. Configure the server service-role key and apply the lease documents migration.',
+  });
+  return false;
+};
+
+const findLeaseDocumentLease = async (leaseId) => {
+  if (!validUuidPattern.test(String(leaseId || ''))) return null;
+  const { data, error } = await supabaseServiceRole
+    .from('leases')
+    .select('id')
+    .eq('id', leaseId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+const getLeaseDocumentTokenSecret = () => {
+  const configured = String(process.env.LEASE_DOCUMENT_TOKEN_SECRET || '').trim();
+  if (!configured) return getSessionSecret();
+
+  if (!/^[A-Za-z0-9_-]+$/.test(configured)) {
+    throw Object.assign(new Error('LEASE_DOCUMENT_TOKEN_SECRET must be canonical base64url.'), {
+      code: 'LEASE_DOCUMENT_TOKEN_SECRET_INVALID',
+    });
+  }
+  const secret = Buffer.from(configured, 'base64url');
+  if (secret.length < 32 || secret.toString('base64url') !== configured) {
+    throw Object.assign(new Error('LEASE_DOCUMENT_TOKEN_SECRET must contain at least 32 random bytes.'), {
+      code: 'LEASE_DOCUMENT_TOKEN_SECRET_INVALID',
+    });
+  }
+  return secret;
+};
+
+const createOrReadLeaseDocumentAccess = async (leaseId, { regenerate = false, allowCreate = true, createdBy = null } = {}) => {
+  const secret = getLeaseDocumentTokenSecret();
+  const { data: existing, error: readError } = await supabaseServiceRole
+    .from('lease_document_access')
+    .select('lease_id, token_hash, token_nonce, revoked_at')
+    .eq('lease_id', leaseId)
+    .maybeSingle();
+  if (readError) throw readError;
+
+  if (existing && !regenerate) {
+    if (existing.revoked_at) {
+      throw Object.assign(new Error('Lease document access has been revoked. A manager must regenerate the link.'), {
+        code: 'LEASE_DOCUMENT_ACCESS_REVOKED',
+      });
+    }
+    const token = deriveLeaseDocumentToken(leaseId, existing.token_nonce, secret);
+    if (!leaseDocumentTokenMatchesHash(token, existing.token_hash)) {
+      throw Object.assign(new Error('Lease document access key has changed. A manager must regenerate the link.'), {
+        code: 'LEASE_DOCUMENT_TOKEN_KEY_MISMATCH',
+      });
+    }
+    return token;
+  }
+
+  if (!existing && !allowCreate) {
+    throw Object.assign(new Error('No lease document link exists yet. A manager must create it.'), {
+      code: 'LEASE_DOCUMENT_ACCESS_NOT_FOUND',
+    });
+  }
+
+  const nonce = createLeaseDocumentNonce();
+  const token = deriveLeaseDocumentToken(leaseId, nonce, secret);
+  const record = {
+    lease_id: leaseId,
+    token_hash: hashLeaseDocumentToken(token),
+    token_nonce: nonce,
+    revoked_at: null,
+    created_by: createdBy,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existing) {
+    const { data, error } = await supabaseServiceRole
+      .from('lease_document_access')
+      .update(record)
+      .eq('lease_id', leaseId)
+      .select('lease_id')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('Lease document access record was not updated.');
+    return token;
+  }
+
+  const { error: insertError } = await supabaseServiceRole
+    .from('lease_document_access')
+    .insert([{ ...record, created_at: new Date().toISOString() }]);
+  if (!insertError) return token;
+
+  // A concurrent first-time request may have inserted the row first.
+  if (insertError.code === '23505') {
+    const { data: raced, error: racedError } = await supabaseServiceRole
+      .from('lease_document_access')
+      .select('token_hash, token_nonce, revoked_at')
+      .eq('lease_id', leaseId)
+      .maybeSingle();
+    if (racedError) throw racedError;
+    if (raced && !raced.revoked_at) {
+      const racedToken = deriveLeaseDocumentToken(leaseId, raced.token_nonce, secret);
+      if (leaseDocumentTokenMatchesHash(racedToken, raced.token_hash)) return racedToken;
+    }
+  }
+  throw insertError;
+};
+
+const signLeaseDocument = async (row) => {
+  const bucket = supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET);
+  const [{ data: previewData, error: previewError }, { data: downloadData, error: downloadError }] =
+    await Promise.all([
+      bucket.createSignedUrl(row.storage_path, 600),
+      bucket.createSignedUrl(row.storage_path, 600, { download: row.original_name }),
+    ]);
+  if (previewError) throw previewError;
+  if (downloadError) throw downloadError;
+  return {
+    id: row.id,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    fileSize: Number(row.file_size),
+    createdAt: row.created_at,
+    previewUrl: previewData.signedUrl,
+    downloadUrl: downloadData.signedUrl,
+  };
 };
 
 const TENANT_PHOTO_BUCKET = 'tenant-photos';
@@ -498,6 +710,239 @@ app.delete('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res
 
     console.error('Delete tenant error:', error);
     res.status(500).json({ error: 'Unable to delete tenant.' });
+  }
+});
+
+app.get('/api/public/lease-documents/:token', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, max-age=0',
+    'Referrer-Policy': 'no-referrer',
+    'X-Robots-Tag': 'noindex, nofollow',
+  });
+
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const token = String(req.params.token || '');
+    if (!LEASE_DOCUMENT_TOKEN_PATTERN.test(token)) {
+      return res.status(404).json({ error: 'This lease document link is invalid or no longer available.' });
+    }
+
+    const tokenHash = hashLeaseDocumentToken(token);
+    const { data: access, error: accessError } = await supabaseServiceRole
+      .from('lease_document_access')
+      .select('lease_id')
+      .eq('token_hash', tokenHash)
+      .is('revoked_at', null)
+      .maybeSingle();
+    if (accessError) throw accessError;
+    if (!access) {
+      return res.status(404).json({ error: 'This lease document link is invalid or no longer available.' });
+    }
+
+    const { data: rows, error: documentsError } = await supabaseServiceRole
+      .from('lease_documents')
+      .select('id, original_name, mime_type, file_size, created_at, storage_path')
+      .eq('lease_id', access.lease_id)
+      .order('created_at', { ascending: false });
+    if (documentsError) throw documentsError;
+
+    const documents = await Promise.all((rows || []).map(signLeaseDocument));
+    return res.json({ documents });
+  } catch (error) {
+    console.error('Public lease documents fetch error:', error?.message || error);
+    return res.status(500).json({
+      error: 'Unable to load these lease documents. Please contact property management.',
+    });
+  }
+});
+
+app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const lease = await findLeaseDocumentLease(req.params.id);
+    if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+
+    const [{ data: rows, error: documentsError }, { data: access, error: accessError }] = await Promise.all([
+      supabaseServiceRole
+        .from('lease_documents')
+        .select('id, original_name, mime_type, file_size, created_at, storage_path')
+        .eq('lease_id', lease.id)
+        .order('created_at', { ascending: false }),
+      supabaseServiceRole
+        .from('lease_document_access')
+        .select('revoked_at')
+        .eq('lease_id', lease.id)
+        .maybeSingle(),
+    ]);
+    if (documentsError) throw documentsError;
+    if (accessError) throw accessError;
+
+    const documents = await Promise.all((rows || []).map(signLeaseDocument));
+    return res.json({
+      documents,
+      access: {
+        enabled: Boolean(access && !access.revoked_at),
+        revokedAt: access?.revoked_at || null,
+      },
+    });
+  } catch (error) {
+    console.error('Lease documents list error:', error?.message || error);
+    return res.status(500).json({
+      error: 'Unable to load lease documents. Confirm the lease documents migration and private Storage bucket are configured.',
+    });
+  }
+});
+
+app.post(
+  '/api/leases/:id/documents',
+  requireRoles('Admin', 'Manager'),
+  parseLeaseDocumentsMultipart,
+  async (req, res) => {
+    const uploadedPaths = [];
+    let metadataSaved = false;
+    try {
+      if (!requireLeaseDocumentStorage(res)) return;
+      if (!Array.isArray(req.files) || !req.files.length) {
+        return res.status(400).json({ error: 'Choose at least one PDF, JPG, or PNG document.' });
+      }
+
+      const lease = await findLeaseDocumentLease(req.params.id);
+      if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+
+      const validatedFiles = req.files.map((file) => {
+        const detected = detectLeaseDocumentFormat(file.buffer);
+        const claimedMime = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+        if (!detected || detected.mimeType !== claimedMime) {
+          throw Object.assign(
+            new Error('One or more files do not match their actual PDF, JPG, or PNG content.'),
+            { statusCode: 400 }
+          );
+        }
+        const originalName = cleanLeaseDocumentName(file.originalname);
+        const originalExtension = originalName.includes('.')
+          ? originalName.split('.').pop().toLowerCase()
+          : '';
+        const allowedExtensions = {
+          'application/pdf': ['pdf'],
+          'image/jpeg': ['jpg', 'jpeg'],
+          'image/png': ['png'],
+        };
+        if (!allowedExtensions[detected.mimeType]?.includes(originalExtension)) {
+          throw Object.assign(
+            new Error('A lease document filename extension does not match its actual file type.'),
+            { statusCode: 400 }
+          );
+        }
+        return { file, detected, originalName };
+      });
+
+      const bucket = supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET);
+      const rows = [];
+      for (const { file, detected, originalName } of validatedFiles) {
+        const storagePath = `${lease.id}/${crypto.randomUUID()}.${detected.extension}`;
+        const { error: uploadError } = await bucket.upload(storagePath, file.buffer, {
+          contentType: detected.mimeType,
+          upsert: false,
+        });
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(storagePath);
+        rows.push({
+          id: crypto.randomUUID(),
+          lease_id: lease.id,
+          original_name: originalName,
+          storage_path: storagePath,
+          mime_type: detected.mimeType,
+          file_size: file.size,
+          created_by: req.auth.sub,
+        });
+      }
+
+      const { error: insertError } = await supabaseServiceRole
+        .from('lease_documents')
+        .insert(rows);
+      if (insertError) throw insertError;
+      metadataSaved = true;
+
+      return res.status(201).json({ success: true, uploaded: rows.length });
+    } catch (error) {
+      if (!metadataSaved && uploadedPaths.length) {
+        try {
+          const { error: cleanupError } = await supabaseServiceRole
+            .storage.from(LEASE_DOCUMENT_BUCKET).remove(uploadedPaths);
+          if (cleanupError) {
+            console.error('Lease document upload cleanup failed:', cleanupError.message || cleanupError);
+          }
+        } catch (cleanupError) {
+          console.error('Lease document upload cleanup failed:', cleanupError?.message || cleanupError);
+        }
+      }
+      console.error('Lease document upload error:', error?.message || error);
+      return res.status(error.statusCode || (error.code === 'LEASE_DOCUMENT_STORAGE_UNAVAILABLE' ? 503 : 500))
+        .json({
+          error: error.statusCode === 400
+            ? error.message
+            : 'Unable to save lease documents. Confirm the lease documents migration and private Storage bucket are configured.',
+        });
+    }
+  }
+);
+
+app.post(
+  '/api/leases/:id/documents/access',
+  requireRoles('Admin', 'Manager', 'Accountant'),
+  async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      if (!requireLeaseDocumentStorage(res)) return;
+      const lease = await findLeaseDocumentLease(req.params.id);
+      if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+
+      const regenerate = req.body?.regenerate === true;
+      if (regenerate && !['admin', 'manager'].includes(String(req.auth.role).toLowerCase())) {
+        return res.status(403).json({ error: 'Only management can regenerate a lease document link.' });
+      }
+
+      const token = await createOrReadLeaseDocumentAccess(lease.id, {
+        regenerate,
+        allowCreate: ['admin', 'manager'].includes(String(req.auth.role).toLowerCase()),
+        createdBy: req.auth.sub,
+      });
+      return res.set('Cache-Control', 'no-store').json({ token });
+    } catch (error) {
+      const status = error.code === 'LEASE_DOCUMENT_ACCESS_NOT_FOUND' ? 404 :
+        error.code === 'LEASE_DOCUMENT_ACCESS_REVOKED' ? 409 :
+        ['LEASE_DOCUMENT_TOKEN_KEY_MISMATCH', 'LEASE_DOCUMENT_TOKEN_SECRET_INVALID'].includes(error.code) ? 503 : 500;
+      console.error('Lease document access setup error:', error?.message || error);
+      return res.status(status).json({
+        error: status === 404 || status === 409 || status === 503
+          ? error.message
+          : 'Unable to prepare the lease document link. Confirm the migration and lease document token secret configuration.',
+      });
+    }
+  }
+);
+
+app.delete('/api/leases/:id/documents/access', requireRoles('Admin', 'Manager'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const lease = await findLeaseDocumentLease(req.params.id);
+    if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+
+    const { data, error } = await supabaseServiceRole
+      .from('lease_document_access')
+      .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('lease_id', lease.id)
+      .is('revoked_at', null)
+      .select('lease_id')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'No active lease document link was found.' });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Lease document access revoke error:', error?.message || error);
+    return res.status(500).json({ error: 'Unable to revoke the lease document link.' });
   }
 });
 
