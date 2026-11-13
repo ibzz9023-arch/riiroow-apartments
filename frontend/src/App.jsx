@@ -334,6 +334,7 @@ const [user, setUser] = useState(null);
 
   const [qrMaintenanceOpen, setQrMaintenanceOpen] = useState(false);
   const [qrMaintenanceSuccess, setQrMaintenanceSuccess] = useState(false);
+  const [qrActiveService, setQrActiveService] = useState('');
   const [qrMaintenanceSubmitting, setQrMaintenanceSubmitting] = useState(false);
 
   const [qrPaymentPin, setQrPaymentPin] = useState('');
@@ -2517,29 +2518,55 @@ const handleLogin = async (event) => {
             Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
           </div>
 
-          {qrTenantToken ? (
+          {qrTenantToken && !qrActiveService ? (
             <div className="stacked-sections">
               <button
                 type="button"
                 className="primary-btn"
                 onClick={() => {
                   setQrMaintenanceSuccess(false);
+                  setQrActiveService('maintenance');
                   setQrMaintenanceOpen(true);
                 }}
               >
                 Maintenance Request
               </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrPaymentNotificationSuccess(false);
+                  setQrPaymentNotificationError('');
+                  setQrActiveService('payment');
+                }}
+              >
+                Payment Notification
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrMoveOutSuccess(false);
+                  setQrMoveOutError('');
+                  setQrActiveService('moveout');
+                }}
+              >
+                Move-out Request
+              </button>
             </div>
           ) : null}
 
-          {qrMaintenanceSuccess ? (
+          {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceSuccess ? (
             <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
               <div aria-hidden="true" style={{ width: '88px', height: '88px', margin: '0 auto 16px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '60px', fontWeight: 700 }}>
                 ✓
               </div>
               <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
               <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
-              <button type="button" className="primary-btn" onClick={() => setQrMaintenanceSuccess(false)}>
+              <button type="button" className="primary-btn" onClick={() => {
+  setQrMaintenanceSuccess(false);
+  setQrActiveService('');
+}}>
                 Done
               </button>
             </section>
@@ -2583,7 +2610,7 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
-          {qrPaymentVerified && qrPaymentNotificationSuccess ? (
+          {qrTenantToken && qrActiveService === 'payment' && qrPaymentNotificationSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
               <h3>Payment Notification Submitted Successfully!</h3>
@@ -2599,10 +2626,17 @@ const handleLogin = async (event) => {
               >
                 Submit Another Notification
               </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setQrActiveService('')}
+              >
+                Back to Services
+              </button>
             </section>
           ) : null}
 
-          {qrPaymentVerified && !qrPaymentNotificationSuccess ? (
+          {qrTenantToken && qrActiveService === 'payment' && !qrPaymentNotificationSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Notify Manager of a Payment</h3>
@@ -2661,6 +2695,7 @@ const handleLogin = async (event) => {
                 ) : null}
 
                 <div className="form-actions">
+                  <button type="button" className="secondary-btn" onClick={() => setQrActiveService('')}>Back to Services</button>
                   <button
                     type="submit"
                     className="primary-btn"
@@ -2673,7 +2708,7 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
-          {qrPaymentVerified && qrMoveOutSuccess ? (
+          {qrTenantToken && qrActiveService === 'moveout' && qrMoveOutSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
               <h3>Move-out Request Submitted Successfully!</h3>
@@ -2689,10 +2724,17 @@ const handleLogin = async (event) => {
               >
                 Submit Another Request
               </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setQrActiveService('')}
+              >
+                Back to Services
+              </button>
             </section>
           ) : null}
 
-          {qrPaymentVerified && !qrMoveOutSuccess ? (
+          {qrTenantToken && qrActiveService === 'moveout' && !qrMoveOutSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Request to Move Out</h3>
@@ -2732,6 +2774,7 @@ const handleLogin = async (event) => {
                 ) : null}
 
                 <div className="form-actions">
+                  <button type="button" className="secondary-btn" onClick={() => setQrActiveService('')}>Back to Services</button>
                   <button
                     type="submit"
                     className="primary-btn"
@@ -2743,7 +2786,7 @@ const handleLogin = async (event) => {
               </form>
             </section>
           ) : null}
-          {qrTenantToken && qrMaintenanceOpen ? (
+          {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceOpen ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Report a maintenance problem</h3>
@@ -2874,9 +2917,12 @@ const handleLogin = async (event) => {
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => setQrMaintenanceOpen(false)}
+                    onClick={() => {
+  setQrMaintenanceOpen(false);
+  setQrActiveService('');
+}}
                   >
-                    Cancel
+                    Back to Services
                   </button>
                   <button type="submit" className="primary-btn">
                     Submit Request
