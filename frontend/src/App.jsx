@@ -671,6 +671,7 @@ const [user, setUser] = useState(null);
 
       const cards = files.map((file, index) => {
         const name = escapeHtml(file.originalName || file.fileType || 'Attachment');
+        const downloadUrl = escapeHtml(file.downloadUrl || file.url || '');
         const url = escapeHtml(file.url || '');
         const type = String(file.mimeType || '').toLowerCase();
 
@@ -697,7 +698,7 @@ const [user, setUser] = useState(null);
             <button type="button" data-action="whatsapp" data-index="${index}" data-url="${url}" data-name="${name}">Share via WhatsApp</button>
             <button type="button" data-action="email" data-url="${url}" data-name="${name}">Share via Email</button>
             <button type="button" data-action="copy" data-url="${url}">Copy Link</button>
-            <button type="button" data-action="download" data-url="${url}" data-name="${name}">Open / Download</button>
+            <button type="button" data-action="download" data-url="${downloadUrl}" data-name="${name}">Download</button>
             <button type="button" data-action="share" data-url="${url}" data-name="${name}">Share</button>
           </div>
         </section>`;
