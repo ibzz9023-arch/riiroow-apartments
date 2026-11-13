@@ -340,6 +340,7 @@ const [user, setUser] = useState(null);
   const [qrPaymentPinError, setQrPaymentPinError] = useState('');
   const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
   const [qrTenantToken, setQrTenantToken] = useState('');
+  const [qrActiveService, setQrActiveService] = useState('');
   const [qrPaymentNotificationForm, setQrPaymentNotificationForm] = useState({
     amount: '',
     paymentMethod: 'Mobile Money',
@@ -500,6 +501,7 @@ const [user, setUser] = useState(null);
         setQrTenantToken('');
         setQrPaymentVerified(false);
         setQrMaintenanceOpen(false);
+        setQrActiveService('');
         setQrPaymentPin('');
         setQrPaymentPinError(data.error || 'Your tenant session is no longer valid. Verify your PIN again.');
       }
@@ -2517,7 +2519,7 @@ const handleLogin = async (event) => {
             Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
           </div>
 
-          {qrTenantToken ? (
+          {qrTenantToken && !qrActiveService ? (
             <div className="stacked-sections">
               <button
                 type="button"
@@ -2525,22 +2527,53 @@ const handleLogin = async (event) => {
                 onClick={() => {
                   setQrMaintenanceSuccess(false);
                   setQrMaintenanceOpen(true);
+                  setQrActiveService('maintenance');
                 }}
               >
-                Maintenance Request
+                Maintenance
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrPaymentNotificationSuccess(false);
+                  setQrPaymentNotificationError('');
+                  setQrActiveService('payment');
+                }}
+              >
+                Payment Notification
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrMoveOutSuccess(false);
+                  setQrMoveOutError('');
+                  setQrActiveService('moveout');
+                }}
+              >
+                Move-out Request
               </button>
             </div>
           ) : null}
 
-          {qrMaintenanceSuccess ? (
+          {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceSuccess ? (
             <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
               <div aria-hidden="true" style={{ width: '88px', height: '88px', margin: '0 auto 16px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '60px', fontWeight: 700 }}>
                 ✓
               </div>
               <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
               <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
-              <button type="button" className="primary-btn" onClick={() => setQrMaintenanceSuccess(false)}>
-                Done
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrMaintenanceSuccess(false);
+                  setQrMaintenanceOpen(false);
+                  setQrActiveService('');
+                }}
+              >
+                Back to Services
               </button>
             </section>
           ) : null}
@@ -2583,7 +2616,7 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
-          {qrPaymentVerified && qrPaymentNotificationSuccess ? (
+          {qrTenantToken && qrPaymentVerified && qrActiveService === 'payment' && qrPaymentNotificationSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
               <h3>Payment Notification Submitted Successfully!</h3>
@@ -2595,14 +2628,15 @@ const handleLogin = async (event) => {
                 onClick={() => {
                   setQrPaymentNotificationSuccess(false);
                   setQrPaymentNotificationError('');
+                  setQrActiveService('');
                 }}
               >
-                Submit Another Notification
+                Back to Services
               </button>
             </section>
           ) : null}
 
-          {qrPaymentVerified && !qrPaymentNotificationSuccess ? (
+          {qrTenantToken && qrPaymentVerified && qrActiveService === 'payment' && !qrPaymentNotificationSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Notify Manager of a Payment</h3>
@@ -2662,6 +2696,16 @@ const handleLogin = async (event) => {
 
                 <div className="form-actions">
                   <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setQrPaymentNotificationError('');
+                      setQrActiveService('');
+                    }}
+                  >
+                    Back to Services
+                  </button>
+                  <button
                     type="submit"
                     className="primary-btn"
                     disabled={qrPaymentNotificationSubmitting}
@@ -2673,7 +2717,7 @@ const handleLogin = async (event) => {
             </section>
           ) : null}
 
-          {qrPaymentVerified && qrMoveOutSuccess ? (
+          {qrTenantToken && qrPaymentVerified && qrActiveService === 'moveout' && qrMoveOutSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
               <h3>Move-out Request Submitted Successfully!</h3>
@@ -2685,14 +2729,15 @@ const handleLogin = async (event) => {
                 onClick={() => {
                   setQrMoveOutSuccess(false);
                   setQrMoveOutError('');
+                  setQrActiveService('');
                 }}
               >
-                Submit Another Request
+                Back to Services
               </button>
             </section>
           ) : null}
 
-          {qrPaymentVerified && !qrMoveOutSuccess ? (
+          {qrTenantToken && qrPaymentVerified && qrActiveService === 'moveout' && !qrMoveOutSuccess ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Request to Move Out</h3>
@@ -2733,6 +2778,16 @@ const handleLogin = async (event) => {
 
                 <div className="form-actions">
                   <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setQrMoveOutError('');
+                      setQrActiveService('');
+                    }}
+                  >
+                    Back to Services
+                  </button>
+                  <button
                     type="submit"
                     className="primary-btn"
                     disabled={qrMoveOutSubmitting}
@@ -2743,7 +2798,7 @@ const handleLogin = async (event) => {
               </form>
             </section>
           ) : null}
-          {qrTenantToken && qrMaintenanceOpen ? (
+          {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceOpen ? (
             <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
               <div className="panel-header">
                 <h3>Report a maintenance problem</h3>
@@ -2874,9 +2929,12 @@ const handleLogin = async (event) => {
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => setQrMaintenanceOpen(false)}
+                    onClick={() => {
+                      setQrMaintenanceOpen(false);
+                      setQrActiveService('');
+                    }}
                   >
-                    Cancel
+                    Back to Services
                   </button>
                   <button type="submit" className="primary-btn">
                     Submit Request
