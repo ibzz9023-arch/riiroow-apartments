@@ -50,6 +50,7 @@ const createUuidIfNeeded = (value) => {
 const toLegacyUnit = (row = {}) => ({
   id: row.id,
   unitNumber: row.unit_number ?? row.unitNumber,
+  propertyId: row.property_id ?? row.propertyId ?? null,
   floor: row.floor ?? 1,
   bedrooms: row.bedrooms ?? 1,
   rent: Number(row.rent ?? 0),
