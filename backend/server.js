@@ -1423,11 +1423,17 @@ app.get('/api/maintenance/:id/evidence', requireRoles('Admin', 'Manager', 'Maint
     if (evidenceError) throw evidenceError;
 
     const evidence = await Promise.all((rows || []).map(async (row) => {
-      const { data, error } = await supabaseServiceRole.storage
-        .from(QR_MEDIA_BUCKET)
-        .createSignedUrl(row.storage_path, 600);
+      const bucket = supabaseServiceRole.storage.from(QR_MEDIA_BUCKET);
+      const [
+        { data: previewData, error: previewError },
+        { data: downloadData, error: downloadError },
+      ] = await Promise.all([
+        bucket.createSignedUrl(row.storage_path, 600),
+        bucket.createSignedUrl(row.storage_path, 600, { download: row.original_name }),
+      ]);
 
-      if (error) throw error;
+      if (previewError) throw previewError;
+      if (downloadError) throw downloadError;
 
       return {
         id: row.id,
@@ -1435,7 +1441,8 @@ app.get('/api/maintenance/:id/evidence', requireRoles('Admin', 'Manager', 'Maint
         originalName: row.original_name,
         mimeType: row.mime_type,
         fileSize: row.file_size,
-        url: data.signedUrl,
+        url: previewData.signedUrl,
+        downloadUrl: downloadData.signedUrl,
       };
     }));
 

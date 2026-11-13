@@ -341,6 +341,7 @@ const [user, setUser] = useState(null);
   const [qrPaymentPinError, setQrPaymentPinError] = useState('');
   const [qrPaymentVerified, setQrPaymentVerified] = useState(false);
   const [qrTenantToken, setQrTenantToken] = useState('');
+
   const [qrPaymentNotificationForm, setQrPaymentNotificationForm] = useState({
     amount: '',
     paymentMethod: 'Mobile Money',
@@ -501,6 +502,7 @@ const [user, setUser] = useState(null);
         setQrTenantToken('');
         setQrPaymentVerified(false);
         setQrMaintenanceOpen(false);
+        setQrActiveService('');
         setQrPaymentPin('');
         setQrPaymentPinError(data.error || 'Your tenant session is no longer valid. Verify your PIN again.');
       }
@@ -670,6 +672,7 @@ const [user, setUser] = useState(null);
 
       const cards = files.map((file, index) => {
         const name = escapeHtml(file.originalName || file.fileType || 'Attachment');
+        const downloadUrl = escapeHtml(file.downloadUrl || file.url || '');
         const url = escapeHtml(file.url || '');
         const type = String(file.mimeType || '').toLowerCase();
 
@@ -696,7 +699,7 @@ const [user, setUser] = useState(null);
             <button type="button" data-action="whatsapp" data-index="${index}" data-url="${url}" data-name="${name}">Share via WhatsApp</button>
             <button type="button" data-action="email" data-url="${url}" data-name="${name}">Share via Email</button>
             <button type="button" data-action="copy" data-url="${url}">Copy Link</button>
-            <button type="button" data-action="download" data-url="${url}" data-name="${name}">Open / Download</button>
+            <button type="button" data-action="download" data-url="${downloadUrl}" data-name="${name}">Download</button>
             <button type="button" data-action="share" data-url="${url}" data-name="${name}">Share</button>
           </div>
         </section>`;
@@ -2529,7 +2532,7 @@ const handleLogin = async (event) => {
                   setQrMaintenanceOpen(true);
                 }}
               >
-                Maintenance Request
+                Maintenance
               </button>
               <button
                 type="button"
@@ -2563,11 +2566,16 @@ const handleLogin = async (event) => {
               </div>
               <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
               <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
-              <button type="button" className="primary-btn" onClick={() => {
-  setQrMaintenanceSuccess(false);
-  setQrActiveService('');
-}}>
-                Done
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setQrMaintenanceSuccess(false);
+                  setQrMaintenanceOpen(false);
+                  setQrActiveService('');
+                }}
+              >
+                Back to Services
               </button>
             </section>
           ) : null}
@@ -2622,17 +2630,12 @@ const handleLogin = async (event) => {
                 onClick={() => {
                   setQrPaymentNotificationSuccess(false);
                   setQrPaymentNotificationError('');
+                  setQrActiveService('');
                 }}
-              >
-                Submit Another Notification
-              </button>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setQrActiveService('')}
               >
                 Back to Services
               </button>
+
             </section>
           ) : null}
 
@@ -2695,7 +2698,17 @@ const handleLogin = async (event) => {
                 ) : null}
 
                 <div className="form-actions">
-                  <button type="button" className="secondary-btn" onClick={() => setQrActiveService('')}>Back to Services</button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setQrPaymentNotificationError('');
+                      setQrActiveService('');
+                    }}
+                  >
+                    Back to Services
+                  </button>
                   <button
                     type="submit"
                     className="primary-btn"
@@ -2720,17 +2733,12 @@ const handleLogin = async (event) => {
                 onClick={() => {
                   setQrMoveOutSuccess(false);
                   setQrMoveOutError('');
+                  setQrActiveService('');
                 }}
-              >
-                Submit Another Request
-              </button>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setQrActiveService('')}
               >
                 Back to Services
               </button>
+
             </section>
           ) : null}
 
@@ -2774,7 +2782,17 @@ const handleLogin = async (event) => {
                 ) : null}
 
                 <div className="form-actions">
-                  <button type="button" className="secondary-btn" onClick={() => setQrActiveService('')}>Back to Services</button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setQrMoveOutError('');
+                      setQrActiveService('');
+                    }}
+                  >
+                    Back to Services
+                  </button>
                   <button
                     type="submit"
                     className="primary-btn"
@@ -2918,9 +2936,9 @@ const handleLogin = async (event) => {
                     type="button"
                     className="secondary-btn"
                     onClick={() => {
-  setQrMaintenanceOpen(false);
-  setQrActiveService('');
-}}
+                      setQrMaintenanceOpen(false);
+                      setQrActiveService('');
+                    }}
                   >
                     Back to Services
                   </button>
