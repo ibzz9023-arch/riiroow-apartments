@@ -522,6 +522,45 @@ th {
   font-weight: 600;
 }
 
+.qr-tenant-page .qr-language-picker {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.qr-tenant-page .qr-language-picker select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f9fbff;
+  color: var(--text);
+}
+
+.qr-tenant-page[dir='rtl'] {
+  direction: rtl;
+}
+
+.qr-tenant-page[dir='rtl'] .brand-header,
+.qr-tenant-page[dir='rtl'] .form-actions,
+.qr-tenant-page[dir='rtl'] .panel-header {
+  flex-direction: row-reverse;
+}
+
+.qr-tenant-page[dir='rtl'] .auth-form,
+.qr-tenant-page[dir='rtl'] .crud-form,
+.qr-tenant-page[dir='rtl'] .auth-form label,
+.qr-tenant-page[dir='rtl'] .crud-form label,
+.qr-tenant-page[dir='rtl'] .panel {
+  text-align: right;
+}
+
+.qr-tenant-page[dir='rtl'] .form-actions {
+  justify-content: flex-end;
+}
+
 .auth-form,
 .crud-form {
   display: grid;

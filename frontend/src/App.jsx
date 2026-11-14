@@ -84,6 +84,275 @@ const emptyMaintenanceForm = {
   notes: '',
 };
 
+const qrLanguageOptions = ['en', 'so', 'ar'];
+
+const qrTranslations = {
+  en: {
+    languageLabel: 'Language',
+    languageEnglish: 'English',
+    languageSomali: 'Somali',
+    languageArabic: 'Arabic',
+    unitLabel: 'Unit',
+    welcome: 'Welcome to Riiroow apartment services for Unit {unitNumber}.',
+    maintenance: 'Maintenance',
+    paymentNotification: 'Payment Notification',
+    moveOutRequest: 'Move-out Request',
+    backToServices: 'Back to Services',
+    verifiedMessage: 'Tenant PIN verified. Payment records and other private information are not available in this portal.',
+    verificationTitle: 'Tenant PIN Verification',
+    pinLabel: 'Unit number PIN',
+    verifyPin: 'Verify PIN',
+    pinHint: 'The unit number is guessable and is not strong authentication. This check does not grant access to private records.',
+    maintenanceSuccessTitle: 'Submitted Successfully!',
+    maintenanceSuccessMessage: 'Your maintenance request for Unit {unitNumber} has been submitted. The management team can now review it.',
+    paymentSuccessTitle: 'Payment Notification Submitted Successfully!',
+    paymentSuccessMessage: 'Your payment notification has been sent to the property manager for review.',
+    paymentSuccessNote: 'This is a notification, not a receipt or confirmation that the payment has been recorded.',
+    notifyPaymentTitle: 'Notify Manager of a Payment',
+    notifyPaymentDescription: 'Tell the manager about a payment you have made. The manager must review it before it is treated as verified.',
+    amountPaid: 'Amount paid',
+    paymentMethod: 'Payment method',
+    transactionReference: 'Transaction reference',
+    optional: '(optional)',
+    submitting: 'Submitting...',
+    notifyManager: 'Notify Manager',
+    moveOutSuccessTitle: 'Move-out Request Submitted Successfully!',
+    moveOutSuccessMessage: 'Your requested move-out date has been sent to the property manager for review.',
+    moveOutSuccessNote: 'Submitting a request does not terminate your lease. The manager must review your request.',
+    moveOutTitle: 'Request to Move Out',
+    moveOutDescription: 'Choose your requested move-out date. Your lease remains active unless it is separately terminated.',
+    requestedMoveOutDate: 'Requested move-out date',
+    reason: 'Reason',
+    submitMoveOutRequest: 'Submit Move-out Request',
+    maintenanceTitle: 'Report a maintenance problem',
+    problemLabel: 'What is the problem?',
+    exampleProblem: 'Example: Water leak',
+    detailsLabel: 'Details',
+    descriptionPlaceholder: 'Describe what is happening...',
+    priority: 'Priority',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    emergency: 'Emergency',
+    voiceReport: 'Voice report',
+    recordVoice: 'Record Voice',
+    recordAgain: 'Record Again',
+    stopRecording: 'Stop Recording',
+    discardRecording: 'Discard Recording',
+    voiceRecordingUnsupported: 'Voice recording is not supported by this browser.',
+    voiceRecordingFailed: 'Unable to record the voice report.',
+    microphonePermissionDenied: 'Microphone permission was denied. Please allow microphone access and try again.',
+    microphoneUnavailable: 'Unable to access the microphone.',
+    photo: 'Photo',
+    video: 'Video',
+    submitRequest: 'Submit Request',
+    genericFallback: 'Unable to complete this request. Please try again.',
+    localeName: 'English',
+    pinErrorEnter: 'Enter your tenant PIN.',
+    pinRequired: 'Verify your tenant PIN before submitting a maintenance request.',
+    maintenanceValidation: 'Describe the problem or attach a voice recording, photo, or video.',
+    paymentPinRequired: 'Verify your tenant PIN before submitting.',
+    paymentAmountInvalid: 'Enter a valid payment amount greater than zero.',
+    paymentSecureUnavailable: 'Secure submission is unavailable in this browser. Please try a current browser.',
+    moveOutPinRequired: 'Verify your tenant PIN before submitting.',
+    moveOutDateRequired: 'Choose your requested move-out date.',
+    paymentMethodMobile: 'Mobile Money',
+    paymentMethodBank: 'Bank Transfer',
+    paymentMethodCash: 'Cash',
+    paymentMethodOther: 'Other',
+  },
+  so: {
+    languageLabel: 'Luqadda',
+    languageEnglish: 'Ingiriis',
+    languageSomali: 'Soomaaliga',
+    languageArabic: 'Carabi',
+    unitLabel: 'Unug',
+    welcome: 'Ku soo dhawoow adeegyada guryaha Riiroow ee Unugga {unitNumber}.',
+    maintenance: 'Dayactirka',
+    paymentNotification: 'Ogaysiis Lacag',
+    moveOutRequest: 'Codsiga Ka Bixitaan',
+    backToServices: 'Ku Laabo Adeegyada',
+    verifiedMessage: 'PIN-ga kiraystaha ayaa la xaqiijiyay. Diiwaanada lacagta iyo macluumaadka gaarka ah lama heli karo portal-kan.',
+    verificationTitle: 'Xaqiijinta PIN-ga Kireystaha',
+    pinLabel: 'PIN-ga lambar unuga',
+    verifyPin: 'Xaqiiji PIN',
+    pinHint: 'Lambarka unuga waa la qiyaasi karaa waana ma ahan amni adag. Tani ma siiso gelitaanka diiwaanka gaarka ah.',
+    maintenanceSuccessTitle: 'Si guul leh baa loo gudbiyey!',
+    maintenanceSuccessMessage: 'Codsigaaga dayactirka ee Unug {unitNumber} waa la gudbiyey. Kooxda maareynta waxay hadda dib u eegi doontaa.',
+    paymentSuccessTitle: 'Ogeysiiska lacagta ayaa si guul leh loo gudbiyey!',
+    paymentSuccessMessage: 'Ogeysiiska lacagtaada ayaa loo diray maareeyaha guryaha si dib loo eeggo.',
+    paymentSuccessNote: 'Tani waa ogeysiis, ma aha rasiid ama xaqiijin ah in lacagta la duubay.',
+    notifyPaymentTitle: 'U ogeysiiso Maareeyaha Lacag',
+    notifyPaymentDescription: 'U sheeg maareeyaha lacag aad bixisay. Maareeyuhu waa inuu dib u eegaa ka hor intaan loo tixgelin xaqiijin.',
+    amountPaid: 'Lacagta la bixiyay',
+    paymentMethod: 'Habka lacag-bixinta',
+    transactionReference: 'Tixraaca ganacsiga',
+    optional: '(ikhtiyaar)',
+    submitting: 'La soo gudbinayaa...',
+    notifyManager: 'U Ogeysiiso Maareeyaha',
+    moveOutSuccessTitle: 'Codsiga ka bixitaan ayaa si guul leh loo gudbiyey!',
+    moveOutSuccessMessage: 'Taariikhda ka bixitaan ee aad codsatay ayaa loo diray maareeyaha guryaha si dib loo eeggo.',
+    moveOutSuccessNote: 'Codsiga gudbinta ma joojiyo kiraysigaaga. Maareeyuhu waa inuu dib u eegaa codsigaaga.',
+    moveOutTitle: 'Codsiga Ka Bixitaan',
+    moveOutDescription: 'Dooro taariikhda aad rabto inaad ka bixisid. Kireysigaagu wali wuu firfircoon yahay illaa haddii si gaar ah loo joojiyo.',
+    requestedMoveOutDate: 'Taariikhda la codsaday ee ka bixitaan',
+    reason: 'Sababta',
+    submitMoveOutRequest: 'Gudbi Codsiga Ka Bixitaan',
+    maintenanceTitle: 'Warbixin ka bixi dhibaato dayactir',
+    problemLabel: 'Waa maxay dhibaatada?',
+    exampleProblem: 'Tusaale: Dhibaatada biyaha',
+    detailsLabel: 'Faahfaahinta',
+    descriptionPlaceholder: 'Sharax waxa dhacay...',
+    priority: 'Mudnaanta',
+    low: 'Hoose',
+    medium: 'Dhexdhexaad',
+    high: 'Weyn',
+    emergency: 'Degdeg',
+    voiceReport: 'Warbixinta codka',
+    recordVoice: 'Duub Cod',
+    recordAgain: 'Dib u Duub',
+    stopRecording: 'Jooji Duubista',
+    discardRecording: 'Tirtir Duubista',
+    voiceRecordingUnsupported: 'Duubista codka lagama taageero biraawsarkan.',
+    voiceRecordingFailed: 'Lama duubi karo warbixinta codka.',
+    microphonePermissionDenied: 'Ogolaanshaha makarafoonka waa la diiday. Fadlan oggolow isticmaalka makarafoonka oo mar kale isku day.',
+    microphoneUnavailable: 'Lama heli karo makarafoonka.',
+    photo: 'Sawir',
+    video: 'Video',
+    submitRequest: 'Gudbi Codsiga',
+    genericFallback: 'Ma awoodin in la dhamaystiro codsigan. Fadlan mar kale isku day.',
+    localeName: 'Soomaali',
+    pinErrorEnter: 'Gali PIN-gaaga kiraystaha.',
+    pinRequired: 'Xaqiiji PIN-ga kiraystaha ka hor intaadan gudbin dayactirka.',
+    maintenanceValidation: 'Sharax dhibaatada ama ku dar qoraal cod, sawir, ama video.',
+    paymentPinRequired: 'Xaqiiji PIN-ga kiraystaha ka hor intaadan gudbin.',
+    paymentAmountInvalid: 'Gali lacag sax ah oo ka weyn eber.',
+    paymentSecureUnavailable: 'Gudbinta amniga ma diyaar garoayso browser-kan. Fadlan isticmaal browser cusub.',
+    moveOutPinRequired: 'Xaqiiji PIN-ga kiraystaha ka hor intaadan gudbin.',
+    moveOutDateRequired: 'Dooro taariikhda ka bixitaan ee la codsaday.',
+    paymentMethodMobile: 'Mobile Money',
+    paymentMethodBank: 'Wareejinta Bangiga',
+    paymentMethodCash: 'Lacag Cad',
+    paymentMethodOther: 'Kale',
+  },
+  ar: {
+    languageLabel: 'اللغة',
+    languageEnglish: 'الإنجليزية',
+    languageSomali: 'الصومالية',
+    languageArabic: 'العربية',
+    unitLabel: 'الوحدة',
+    welcome: 'مرحبًا بك في خدمات ريرو للأبنية الخاصة بوحدة {unitNumber}.',
+    maintenance: 'الصيانة',
+    paymentNotification: 'إشعار الدفع',
+    moveOutRequest: 'طلب الخروج',
+    backToServices: 'العودة إلى الخدمات',
+    verifiedMessage: 'تم التحقق من PIN المستأجر. لا تتوفر سجلات الدفع أو المعلومات الخاصة في هذه البوابة.',
+    verificationTitle: 'تحقق من PIN المستأجر',
+    pinLabel: 'PIN رقم الوحدة',
+    verifyPin: 'تحقق من PIN',
+    pinHint: 'رقم الوحدة يمكن التخمين ولا يعد تأكيدًا قويًا. هذا التحقق لا يمنح الوصول إلى السجلات الخاصة.',
+    maintenanceSuccessTitle: 'تم الإرسال بنجاح!',
+    maintenanceSuccessMessage: 'تم إرسال طلب الصيانة الخاص بوحدة {unitNumber}. يمكن لفريق الإدارة الآن مراجعته.',
+    paymentSuccessTitle: 'تم إرسال إشعار الدفع بنجاح!',
+    paymentSuccessMessage: 'تم إرسال إشعار الدفع إلى مدير العقار للمراجعة.',
+    paymentSuccessNote: 'هذا إشعار فقط، وليس إيصالًا أو تأكيدًا بأنه تم تسجيل الدفع.',
+    notifyPaymentTitle: 'إشعار مدير العقار بالدفع',
+    notifyPaymentDescription: 'أخبر المدير عن الدفعة التي قمت بها. يجب على المدير مراجعتها قبل اعتبارها مؤكدة.',
+    amountPaid: 'المبلغ المدفوع',
+    paymentMethod: 'طريقة الدفع',
+    transactionReference: 'مرجع المعاملة',
+    optional: '(اختياري)',
+    submitting: 'جارٍ الإرسال...',
+    notifyManager: 'إشعار المدير',
+    moveOutSuccessTitle: 'تم إرسال طلب الخروج بنجاح!',
+    moveOutSuccessMessage: 'تم إرسال تاريخ الخروج المطلوب إلى مدير العقار للمراجعة.',
+    moveOutSuccessNote: 'إرسال الطلب لا يوقف عقد الإيجار. يجب على المدير مراجعة طلبك.',
+    moveOutTitle: 'طلب الخروج',
+    moveOutDescription: 'اختر تاريخ الخروج المطلوب. يبقى عقد الإيجار نشطًا ما لم يتم إنهاؤه بشكل منفصل.',
+    requestedMoveOutDate: 'تاريخ الخروج المطلوب',
+    reason: 'السبب',
+    submitMoveOutRequest: 'إرسال طلب الخروج',
+    maintenanceTitle: 'الإبلاغ عن مشكلة صيانة',
+    problemLabel: 'ما هي المشكلة؟',
+    exampleProblem: 'مثال: تسرب المياه',
+    detailsLabel: 'التفاصيل',
+    descriptionPlaceholder: 'صف ما يحدث...',
+    priority: 'الأولوية',
+    low: 'منخفض',
+    medium: 'متوسط',
+    high: 'عالي',
+    emergency: 'طارئ',
+    voiceReport: 'تقرير صوتي',
+    recordVoice: 'تسجيل الصوت',
+    recordAgain: 'تسجيل مرة أخرى',
+    stopRecording: 'إيقاف التسجيل',
+    discardRecording: 'إلغاء التسجيل',
+    voiceRecordingUnsupported: 'هذا المتصفح لا يدعم تسجيل الصوت.',
+    voiceRecordingFailed: 'تعذّر تسجيل البلاغ الصوتي.',
+    microphonePermissionDenied: 'تم رفض إذن استخدام الميكروفون. يُرجى السماح بالوصول إلى الميكروفون ثم المحاولة مرة أخرى.',
+    microphoneUnavailable: 'تعذّر الوصول إلى الميكروفون.',
+    photo: 'صورة',
+    video: 'فيديو',
+    submitRequest: 'إرسال الطلب',
+    genericFallback: 'تعذر إكمال هذا الطلب. يُرجى المحاولة مرة أخرى.',
+    localeName: 'العربية',
+    pinErrorEnter: 'أدخل PIN المستأجر.',
+    pinRequired: 'تحقق من PIN المستأجر قبل إرسال طلب الصيانة.',
+    maintenanceValidation: 'صف المشكلة أو أرفق تسجيلًا صوتيًا أو صورة أو فيديو.',
+    paymentPinRequired: 'تحقق من PIN المستأجر قبل الإرسال.',
+    paymentAmountInvalid: 'أدخل مبلغًا صحيحًا أكبر من صفر.',
+    paymentSecureUnavailable: 'الإرسال الآمن غير متاح في هذا المتصفح. يرجى استخدام متصفح حديث.',
+    moveOutPinRequired: 'تحقق من PIN المستأجر قبل الإرسال.',
+    moveOutDateRequired: 'اختر تاريخ الخروج المطلوب.',
+    paymentMethodMobile: 'الدفع عبر الهاتف',
+    paymentMethodBank: 'حوالة بنكية',
+    paymentMethodCash: 'نقدًا',
+    paymentMethodOther: 'أخرى',
+  },
+};
+
+const getInitialQrLanguage = () => {
+  if (typeof window === 'undefined') {
+    return 'en';
+  }
+
+  try {
+    const stored = window.localStorage.getItem('riiroow-qr-language');
+    return qrLanguageOptions.includes(stored) ? stored : 'en';
+  } catch {
+    return 'en';
+  }
+};
+
+const localizeQrError = (rawMessage, language) => {
+  const text = String(rawMessage || '').trim();
+  const lower = text.toLowerCase();
+  const locale = qrTranslations[language] || qrTranslations.en;
+
+  if (!text) {
+    return locale.genericFallback;
+  }
+
+  const handlers = [
+    ['verify your tenant pin before submitting a maintenance request', locale.pinRequired],
+    ['describe the problem or attach a voice recording, photo, or video', locale.maintenanceValidation],
+    ['verify your tenant pin before submitting', locale.paymentPinRequired],
+    ['enter your tenant pin', locale.pinErrorEnter],
+    ['enter a valid payment amount greater than zero', locale.paymentAmountInvalid],
+    ['secure submission is unavailable in this browser', locale.paymentSecureUnavailable],
+    ['choose your requested move-out date', locale.moveOutDateRequired],
+    ['verification did not return a tenant session', locale.genericFallback],
+  ];
+
+  for (const [needle, value] of handlers) {
+    if (lower.includes(needle)) {
+      return value;
+    }
+  }
+
+  return locale.genericFallback;
+};
+
 const getStatusClass = (status = '') => {
     
   const value = String(status).trim().toLowerCase();
@@ -287,6 +556,7 @@ const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
+  const [qrLanguage, setQrLanguage] = useState(getInitialQrLanguage);
   const [activeTab, setActiveTab] = useState('overview');
   const [editingUnitId, setEditingUnitId] = useState(null);
   const [editingTenantId, setEditingTenantId] = useState(null);
@@ -369,12 +639,39 @@ const [user, setUser] = useState(null);
   const [qrMediaError, setQrMediaError] = useState('');
   const qrMediaRecorderRef = useRef(null);
   const qrAudioChunksRef = useRef([]);
+  const qrT = qrTranslations[qrLanguage] || qrTranslations.en;
+  const qrPathMatch = window.location.pathname.match(/\/qr\/([^/]+)/i);
+  const qrUnitNumber = qrPathMatch ? decodeURIComponent(qrPathMatch[1]) : '';
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('riiroow-qr-language', qrLanguage);
+    } catch {
+      // Continue if browser storage is unavailable.
+    }
+
+    if (!qrUnitNumber || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const previousLang = root.lang;
+    const previousDir = root.dir;
+
+    root.lang = qrLanguage;
+    root.dir = qrLanguage === 'ar' ? 'rtl' : 'ltr';
+
+    return () => {
+      root.lang = previousLang;
+      root.dir = previousDir;
+    };
+  }, [qrLanguage, qrUnitNumber]);
 
   const startQrVoiceRecording = async () => {
     setQrMediaError('');
 
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      setQrMediaError('Voice recording is not supported by this browser.');
+      setQrMediaError(qrT.voiceRecordingUnsupported);
       return;
     }
 
@@ -426,7 +723,7 @@ const [user, setUser] = useState(null);
       };
 
       recorder.onerror = () => {
-        setQrMediaError('Unable to record the voice report.');
+        setQrMediaError(qrT.voiceRecordingFailed);
         setQrRecording(false);
         stream.getTracks().forEach((track) => track.stop());
         qrMediaRecorderRef.current = null;
@@ -438,8 +735,8 @@ const [user, setUser] = useState(null);
       console.error('QR voice recording error:', error);
       setQrMediaError(
         error?.name === 'NotAllowedError'
-          ? 'Microphone permission was denied. Please allow microphone access and try again.'
-          : 'Unable to access the microphone.'
+          ? qrT.microphonePermissionDenied
+          : qrT.microphoneUnavailable
       );
       setQrRecording(false);
     }
@@ -471,8 +768,6 @@ const [user, setUser] = useState(null);
     setQrMediaError('');
     qrAudioChunksRef.current = [];
   };
-  const qrPathMatch = window.location.pathname.match(/\/qr\/([^/]+)/i);
-  const qrUnitNumber = qrPathMatch ? decodeURIComponent(qrPathMatch[1]) : '';
   const leaseDocumentsPathMatch = window.location.pathname.match(/\/lease-documents\/([^/]+)\/?$/i);
   const leaseDocumentsToken = leaseDocumentsPathMatch ? leaseDocumentsPathMatch[1] : '';
 
@@ -1031,7 +1326,7 @@ const printUnitQRCodes = async () => {
     event.preventDefault();
 
     if (!qrTenantToken) {
-      setError('Verify your tenant PIN before submitting a maintenance request.');
+      setError(localizeQrError('Verify your tenant PIN before submitting a maintenance request.', qrLanguage));
       return;
     }
 
@@ -1051,7 +1346,7 @@ const printUnitQRCodes = async () => {
     });
 
     if (!title && !description && !hasMedia) {
-      setError('Describe the problem or attach a voice recording, photo, or video.');
+      setError(localizeQrError('Describe the problem or attach a voice recording, photo, or video.', qrLanguage));
       return;
     }
 
@@ -1092,7 +1387,7 @@ const printUnitQRCodes = async () => {
       setQrMaintenanceOpen(false);
     } catch (requestError) {
       setError(
-        requestError.message || 'Unable to submit the maintenance request.'
+        localizeQrError(requestError.message || 'Unable to submit the maintenance request.', qrLanguage)
       );
     } finally {
       setQrMaintenanceSubmitting(false);
@@ -1105,7 +1400,7 @@ const printUnitQRCodes = async () => {
     const enteredPin = qrPaymentPin.trim();
 
     if (!/^\d{4}$/.test(enteredPin)) {
-      setQrPaymentPinError('Enter your tenant PIN.');
+      setQrPaymentPinError(localizeQrError('Enter your tenant PIN.', qrLanguage));
       setQrPaymentVerified(false);
       setQrTenantToken('');
       return;
@@ -1135,7 +1430,7 @@ const printUnitQRCodes = async () => {
       setQrPaymentVerified(true);
     } catch (requestError) {
       setQrPaymentPinError(
-        requestError.message || 'Unable to verify your PIN. Please try again.'
+        localizeQrError(requestError.message || 'Unable to verify your PIN. Please try again.', qrLanguage)
       );
       setQrPaymentVerified(false);
       setQrTenantToken('');
@@ -1146,20 +1441,20 @@ const printUnitQRCodes = async () => {
     event.preventDefault();
 
     if (!qrTenantToken) {
-      setQrPaymentNotificationError('Verify your tenant PIN before submitting.');
+      setQrPaymentNotificationError(localizeQrError('Verify your tenant PIN before submitting.', qrLanguage));
       return;
     }
 
     const amount = Number(qrPaymentNotificationForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setQrPaymentNotificationError('Enter a valid payment amount greater than zero.');
+      setQrPaymentNotificationError(localizeQrError('Enter a valid payment amount greater than zero.', qrLanguage));
       return;
     }
 
     let idempotencyKey = qrPaymentIdempotencyKey;
     if (!idempotencyKey) {
       if (!globalThis.crypto?.randomUUID) {
-        setQrPaymentNotificationError('Secure submission is unavailable in this browser. Please try a current browser.');
+        setQrPaymentNotificationError(localizeQrError('Secure submission is unavailable in this browser. Please try a current browser.', qrLanguage));
         return;
       }
       idempotencyKey = globalThis.crypto.randomUUID();
@@ -1195,7 +1490,7 @@ const printUnitQRCodes = async () => {
       setQrPaymentNotificationSuccess(true);
     } catch (requestError) {
       setQrPaymentNotificationError(
-        requestError.message || 'Unable to submit the payment notification. Please try again.'
+        localizeQrError(requestError.message || 'Unable to submit the payment notification. Please try again.', qrLanguage)
       );
     } finally {
       setQrPaymentNotificationSubmitting(false);
@@ -1206,12 +1501,12 @@ const printUnitQRCodes = async () => {
     event.preventDefault();
 
     if (!qrTenantToken) {
-      setQrMoveOutError('Verify your tenant PIN before submitting.');
+      setQrMoveOutError(localizeQrError('Verify your tenant PIN before submitting.', qrLanguage));
       return;
     }
 
     if (!qrMoveOutForm.requestedMoveOutDate) {
-      setQrMoveOutError('Choose your requested move-out date.');
+      setQrMoveOutError(localizeQrError('Choose your requested move-out date.', qrLanguage));
       return;
     }
 
@@ -1235,7 +1530,7 @@ const printUnitQRCodes = async () => {
       setQrMoveOutSuccess(true);
     } catch (requestError) {
       setQrMoveOutError(
-        requestError.message || 'Unable to submit your move-out request. Please try again.'
+        localizeQrError(requestError.message || 'Unable to submit your move-out request. Please try again.', qrLanguage)
       );
     } finally {
       setQrMoveOutSubmitting(false);
@@ -2503,21 +2798,49 @@ const handleLogin = async (event) => {
   };
 
   if (qrUnitNumber) {
+    const qrPageDir = qrLanguage === 'ar' ? 'rtl' : 'ltr';
+    const paymentMethodOptions = [
+      { value: 'Mobile Money', label: qrT.paymentMethodMobile },
+      { value: 'Bank Transfer', label: qrT.paymentMethodBank },
+      { value: 'Cash', label: qrT.paymentMethodCash },
+      { value: 'Other', label: qrT.paymentMethodOther },
+    ];
+    const priorityOptions = [
+      { value: 'Low', label: qrT.low },
+      { value: 'Medium', label: qrT.medium },
+      { value: 'High', label: qrT.high },
+      { value: 'Emergency', label: qrT.emergency },
+    ];
+
     return (
-      <div className="auth-shell">
+      <div className="auth-shell qr-tenant-page" dir={qrPageDir} lang={qrLanguage}>
         <div className="auth-card">
+          <div className="qr-language-picker">
+            <label htmlFor="qr-language-select">{qrT.languageLabel}</label>
+            <select
+              id="qr-language-select"
+              value={qrLanguage}
+              onChange={(event) => setQrLanguage(event.target.value)}
+              aria-label={qrT.languageLabel}
+            >
+              <option value="en">{qrT.languageEnglish}</option>
+              <option value="so">{qrT.languageSomali}</option>
+              <option value="ar">{qrT.languageArabic}</option>
+            </select>
+          </div>
+
           <div className="brand-header">
             <div className="brand-mark">
               <img src={import.meta.env.BASE_URL + 'riiroow-logo.png'} alt="Riiroow Apartments logo" />
             </div>
             <div className="brand-copy">
               <p className="eyebrow">Riiroow Apartments</p>
-              <h1>Unit {qrUnitNumber}</h1>
+              <h1>{qrT.unitLabel} {qrUnitNumber}</h1>
             </div>
           </div>
 
           <div className="auth-intro">
-            Welcome to Riiroow apartment services for Unit {qrUnitNumber}.
+            {qrT.welcome.replace('{unitNumber}', qrUnitNumber)}
           </div>
 
           {qrTenantToken && !qrActiveService ? (
@@ -2531,7 +2854,7 @@ const handleLogin = async (event) => {
                   setQrActiveService('maintenance');
                 }}
               >
-                Maintenance
+                {qrT.maintenance}
               </button>
               <button
                 type="button"
@@ -2542,7 +2865,7 @@ const handleLogin = async (event) => {
                   setQrActiveService('payment');
                 }}
               >
-                Payment Notification
+                {qrT.paymentNotification}
               </button>
               <button
                 type="button"
@@ -2553,18 +2876,18 @@ const handleLogin = async (event) => {
                   setQrActiveService('moveout');
                 }}
               >
-                Move-out Request
+                {qrT.moveOutRequest}
               </button>
             </div>
           ) : null}
 
           {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceSuccess ? (
-            <section className="panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
+            <section className="panel qr-form-panel" role="status" style={{ marginTop: '16px', padding: '28px 20px', textAlign: 'center' }}>
               <div aria-hidden="true" style={{ width: '88px', height: '88px', margin: '0 auto 16px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '60px', fontWeight: 700 }}>
                 ✓
               </div>
-              <h2 style={{ color: '#15803d' }}>Submitted Successfully!</h2>
-              <p>Your maintenance request for Unit {qrUnitNumber} has been submitted. The management team can now review it.</p>
+              <h2 style={{ color: '#15803d' }}>{qrT.maintenanceSuccessTitle}</h2>
+              <p>{qrT.maintenanceSuccessMessage.replace('{unitNumber}', qrUnitNumber)}</p>
               <button
                 type="button"
                 className="primary-btn"
@@ -2574,19 +2897,19 @@ const handleLogin = async (event) => {
                   setQrActiveService('');
                 }}
               >
-                Back to Services
+                {qrT.backToServices}
               </button>
             </section>
           ) : null}
 
           {!qrTenantToken ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px' }}>
               <div className="panel-header">
-                <h3>Tenant PIN Verification</h3>
+                <h3>{qrT.verificationTitle}</h3>
               </div>
               <form className="crud-form" onSubmit={handleQrPaymentPinSubmit}>
                 <label>
-                  Unit number PIN
+                  {qrT.pinLabel}
                   <input
                     type="password"
                     name="pin"
@@ -2604,25 +2927,25 @@ const handleLogin = async (event) => {
                 {qrPaymentPinError ? <p className="error-text" role="alert">{qrPaymentPinError}</p> : null}
                 {qrPaymentVerified ? (
                   <p className="success-text" role="status">
-                    Tenant PIN verified. Payment records and other private information are not available in this portal.
+                    {qrT.verifiedMessage}
                   </p>
                 ) : null}
                 <p id="qr-payment-pin-note">
-                  The unit number is guessable and is not strong authentication. This check does not grant access to private records.
+                  {qrT.pinHint}
                 </p>
                 <div className="form-actions">
-                  <button type="submit" className="primary-btn">Verify PIN</button>
+                  <button type="submit" className="primary-btn">{qrT.verifyPin}</button>
                 </div>
               </form>
             </section>
           ) : null}
 
           {qrTenantToken && qrPaymentVerified && qrActiveService === 'payment' && qrPaymentNotificationSuccess ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
-              <h3>Payment Notification Submitted Successfully!</h3>
-              <p>Your payment notification has been sent to the property manager for review.</p>
-              <p>This is a notification, not a receipt or confirmation that the payment has been recorded.</p>
+              <h3>{qrT.paymentSuccessTitle}</h3>
+              <p>{qrT.paymentSuccessMessage}</p>
+              <p>{qrT.paymentSuccessNote}</p>
               <button
                 type="button"
                 className="secondary-btn"
@@ -2632,20 +2955,20 @@ const handleLogin = async (event) => {
                   setQrActiveService('');
                 }}
               >
-                Back to Services
+                {qrT.backToServices}
               </button>
             </section>
           ) : null}
 
           {qrTenantToken && qrPaymentVerified && qrActiveService === 'payment' && !qrPaymentNotificationSuccess ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px' }}>
               <div className="panel-header">
-                <h3>Notify Manager of a Payment</h3>
+                <h3>{qrT.notifyPaymentTitle}</h3>
               </div>
-              <p>Tell the manager about a payment you have made. The manager must review it before it is treated as verified.</p>
+              <p>{qrT.notifyPaymentDescription}</p>
               <form className="crud-form" onSubmit={handleQrPaymentNotificationSubmit}>
                 <label>
-                  Amount paid
+                  {qrT.amountPaid}
                   <input
                     type="number"
                     name="amount"
@@ -2661,7 +2984,7 @@ const handleLogin = async (event) => {
                 </label>
 
                 <label>
-                  Payment method
+                  {qrT.paymentMethod}
                   <select
                     name="paymentMethod"
                     value={qrPaymentNotificationForm.paymentMethod}
@@ -2670,15 +2993,14 @@ const handleLogin = async (event) => {
                       paymentMethod: event.target.value,
                     }))}
                   >
-                    <option value="Mobile Money">Mobile Money</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Other">Other</option>
+                    {paymentMethodOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </label>
 
                 <label>
-                  Transaction reference <span style={{ fontWeight: 400 }}>(optional)</span>
+                  {qrT.transactionReference} <span style={{ fontWeight: 400 }}>{qrT.optional}</span>
                   <input
                     type="text"
                     name="transactionReference"
@@ -2704,14 +3026,14 @@ const handleLogin = async (event) => {
                       setQrActiveService('');
                     }}
                   >
-                    Back to Services
+                    {qrT.backToServices}
                   </button>
                   <button
                     type="submit"
                     className="primary-btn"
                     disabled={qrPaymentNotificationSubmitting}
                   >
-                    {qrPaymentNotificationSubmitting ? 'Submitting...' : 'Notify Manager'}
+                    {qrPaymentNotificationSubmitting ? qrT.submitting : qrT.notifyManager}
                   </button>
                 </div>
               </form>
@@ -2719,11 +3041,11 @@ const handleLogin = async (event) => {
           ) : null}
 
           {qrTenantToken && qrPaymentVerified && qrActiveService === 'moveout' && qrMoveOutSuccess ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'center' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px', textAlign: 'center' }}>
               <div style={{ color: '#15803d', fontSize: '56px', fontWeight: 700 }} aria-hidden="true">✓</div>
-              <h3>Move-out Request Submitted Successfully!</h3>
-              <p>Your requested move-out date has been sent to the property manager for review.</p>
-              <p>Submitting a request does not terminate your lease. The manager must review your request.</p>
+              <h3>{qrT.moveOutSuccessTitle}</h3>
+              <p>{qrT.moveOutSuccessMessage}</p>
+              <p>{qrT.moveOutSuccessNote}</p>
               <button
                 type="button"
                 className="secondary-btn"
@@ -2733,20 +3055,20 @@ const handleLogin = async (event) => {
                   setQrActiveService('');
                 }}
               >
-                Back to Services
+                {qrT.backToServices}
               </button>
             </section>
           ) : null}
 
           {qrTenantToken && qrPaymentVerified && qrActiveService === 'moveout' && !qrMoveOutSuccess ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px' }}>
               <div className="panel-header">
-                <h3>Request to Move Out</h3>
+                <h3>{qrT.moveOutTitle}</h3>
               </div>
-              <p>Choose your requested move-out date. Your lease remains active unless it is separately terminated.</p>
+              <p>{qrT.moveOutDescription}</p>
               <form className="crud-form" onSubmit={handleQrMoveOutSubmit}>
                 <label>
-                  Requested move-out date
+                  {qrT.requestedMoveOutDate}
                   <input
                     type="date"
                     name="requestedMoveOutDate"
@@ -2760,7 +3082,7 @@ const handleLogin = async (event) => {
                 </label>
 
                 <label>
-                  Reason <span style={{ fontWeight: 400 }}>(optional)</span>
+                  {qrT.reason} <span style={{ fontWeight: 400 }}>{qrT.optional}</span>
                   <textarea
                     name="reason"
                     rows={3}
@@ -2786,28 +3108,28 @@ const handleLogin = async (event) => {
                       setQrActiveService('');
                     }}
                   >
-                    Back to Services
+                    {qrT.backToServices}
                   </button>
                   <button
                     type="submit"
                     className="primary-btn"
                     disabled={qrMoveOutSubmitting}
                   >
-                    {qrMoveOutSubmitting ? 'Submitting...' : 'Submit Move-out Request'}
+                    {qrMoveOutSubmitting ? qrT.submitting : qrT.submitMoveOutRequest}
                   </button>
                 </div>
               </form>
             </section>
           ) : null}
           {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceOpen ? (
-            <section className="panel" style={{ marginTop: '16px', textAlign: 'left' }}>
+            <section className="panel qr-form-panel" style={{ marginTop: '16px' }}>
               <div className="panel-header">
-                <h3>Report a maintenance problem</h3>
+                <h3>{qrT.maintenanceTitle}</h3>
               </div>
 
               <form className="crud-form" onSubmit={handleQrMaintenanceSubmit}>
                 <label>
-                  What is the problem?
+                  {qrT.problemLabel}
                   <input
                     type="text"
                     name="title"
@@ -2818,13 +3140,13 @@ const handleLogin = async (event) => {
                         title: e.target.value,
                       }))
                     }
-                    placeholder="Example: Water leak"
+                    placeholder={qrT.exampleProblem}
                     maxLength={200}
                   />
                 </label>
 
                 <label>
-                  Details <span style={{ fontWeight: 400 }}>(optional)</span>
+                  {qrT.detailsLabel} <span style={{ fontWeight: 400 }}>{qrT.optional}</span>
                   <textarea
                     name="description"
                     value={qrMaintenanceForm.description}
@@ -2834,14 +3156,14 @@ const handleLogin = async (event) => {
                         description: e.target.value,
                       }))
                     }
-                    placeholder="Describe what is happening..."
+                    placeholder={qrT.descriptionPlaceholder}
                     maxLength={5000}
                     rows={5}
                   />
                 </label>
 
                 <label>
-                  Priority
+                  {qrT.priority}
                   <select
                     name="priority"
                     value={qrMaintenanceForm.priority}
@@ -2852,81 +3174,80 @@ const handleLogin = async (event) => {
                       }))
                     }
                   >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Emergency">Emergency</option>
+                    {priorityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </label>
 
                 <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>
-        <div>
-          <strong>Voice report</strong>
-          <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {!qrRecording ? (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={startQrVoiceRecording}
-              >
-                {qrAudioBlob ? 'Record Again' : 'Record Voice'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={stopQrVoiceRecording}
-              >
-                Stop Recording
-              </button>
-            )}
+                  <div>
+                    <strong>{qrT.voiceReport}</strong>
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {!qrRecording ? (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={startQrVoiceRecording}
+                        >
+                          {qrAudioBlob ? qrT.recordAgain : qrT.recordVoice}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={stopQrVoiceRecording}
+                        >
+                          {qrT.stopRecording}
+                        </button>
+                      )}
 
-            {qrAudioBlob ? (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={discardQrVoiceRecording}
-              >
-                Discard Recording
-              </button>
-            ) : null}
-          </div>
+                      {qrAudioBlob ? (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={discardQrVoiceRecording}
+                        >
+                          {qrT.discardRecording}
+                        </button>
+                      ) : null}
+                    </div>
 
-          {qrAudioUrl ? (
-            <audio
-              controls
-              src={qrAudioUrl}
-              style={{ width: '100%', marginTop: '8px' }}
-            />
-          ) : null}
-        </div>
+                    {qrAudioUrl ? (
+                      <audio
+                        controls
+                        src={qrAudioUrl}
+                        style={{ width: '100%', marginTop: '8px' }}
+                      />
+                    ) : null}
+                  </div>
 
-        <label>
-          Photo <span style={{ fontWeight: 400 }}>(optional)</span>
-          <input
-            type="file"
-            name="photo"
-            accept="image/*"
-          />
-        </label>
+                  <label>
+                    {qrT.photo} <span style={{ fontWeight: 400 }}>{qrT.optional}</span>
+                    <input
+                      type="file"
+                      name="photo"
+                      accept="image/*"
+                    />
+                  </label>
 
-        <label>
-          Video <span style={{ fontWeight: 400 }}>(optional)</span>
-          <input
-            type="file"
-            name="video"
-            accept="video/*"
-          />
-        </label>
+                  <label>
+                    {qrT.video} <span style={{ fontWeight: 400 }}>{qrT.optional}</span>
+                    <input
+                      type="file"
+                      name="video"
+                      accept="video/*"
+                    />
+                  </label>
 
-        {qrMediaError ? (
-          <div style={{ color: '#b42318', fontSize: '14px' }}>
-            {qrMediaError}
-          </div>
-        ) : null}
-      </div>
+                  {qrMediaError ? (
+                    <div style={{ color: '#b42318', fontSize: '14px' }}>
+                      {qrMediaError}
+                    </div>
+                  ) : null}
+                </div>
 
-      <div className="form-actions">
+                <div className="form-actions">
                   <button
                     type="button"
                     className="secondary-btn"
@@ -2935,10 +3256,10 @@ const handleLogin = async (event) => {
                       setQrActiveService('');
                     }}
                   >
-                    Back to Services
+                    {qrT.backToServices}
                   </button>
                   <button type="submit" className="primary-btn">
-                    Submit Request
+                    {qrT.submitRequest}
                   </button>
                 </div>
               </form>
