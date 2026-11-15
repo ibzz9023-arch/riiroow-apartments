@@ -16,6 +16,7 @@ import {
   listManagerMoveOutRequests,
   reviewMoveOutRequest,
 } from './src/moveOutRequests.js';
+import { financialRouter } from './src/financialRoutes.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -86,6 +87,7 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json());
+app.use('/api/financial', financialRouter);
 
 const QR_MEDIA_BUCKET = 'maintenance-evidence';
 const QR_MEDIA_LIMITS = {
@@ -1029,14 +1031,14 @@ app.delete('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res)
   }
 });
 
-app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+app.post('/api/payments', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     const item = await createPayment({
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       amount: Number(req.body.amount ?? 0),
-      paidAmount: Number(req.body.paidAmount ?? req.body.paid_amount ?? 0),
+      paidAmount: req.body.paidAmount ?? req.body.paid_amount,
       due_date: req.body.dueDate ?? req.body.due_date,
       paid_date: req.body.paidDate ?? req.body.paid_date ?? null,
       status: req.body.status ?? 'Outstanding',
@@ -1054,14 +1056,14 @@ app.post('/api/payments', requireRoles('Admin', 'Manager', 'Accountant'), async 
   }
 });
 
-app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+app.patch('/api/payments/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     const item = await updatePayment(req.params.id, {
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       amount: Number(req.body.amount ?? 0),
-      paidAmount: Number(req.body.paidAmount ?? req.body.paid_amount ?? 0),
+      paidAmount: req.body.paidAmount ?? req.body.paid_amount,
       due_date: req.body.dueDate ?? req.body.due_date,
       paid_date: req.body.paidDate ?? req.body.paid_date ?? null,
       status: req.body.status,
@@ -1079,7 +1081,7 @@ app.patch('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), a
   }
 });
 
-app.delete('/api/payments/:id', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
+app.delete('/api/payments/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
     await deleteEntity('payments', req.params.id);
     res.json({ success: true });

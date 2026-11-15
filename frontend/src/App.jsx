@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
+import FinancialManagement from './FinancialManagement.jsx';
 import QRCode from 'qrcode';
 
 
@@ -3324,16 +3325,17 @@ const handleLogin = async (event) => {
     ['leases', 'Leases'],
     ['deposits', 'Security Deposits'],
     ['payments', 'Payments'],
+    ['financial', 'Financial Management'],
     ['paymentNotifications', 'Payment Notifications'],
     ['moveOutRequests', 'Move-out Requests'],
     ['maintenance', 'Maintenance'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
-    if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'financial', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
+    if (role === 'accountant') return ['overview', 'payments', 'financial', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
-    return true;
+    return false;
   });
 
   const beginEditUnit = (unit) => {
@@ -3425,12 +3427,7 @@ const handleLogin = async (event) => {
     const notificationId = String(notification.id || '');
     if (!notificationId) return;
 
-    const actionLabels = {
-      VerifiedManual: 'verify this payment manually',
-      VerifiedAuto: 'verify and record this payment automatically',
-      MarkManuallyRecorded: 'mark this payment as already recorded',
-      Rejected: 'reject this payment notification',
-    };
+    const actionLabels = { Rejected: 'reject this payment notification' };
     if (!window.confirm(`Are you sure you want to ${actionLabels[action] || 'review this notification'}?`)) {
       return;
     }
@@ -4763,6 +4760,14 @@ const handleLogin = async (event) => {
               </div>
             ) : null}
 
+            {activeTab === 'financial' ? (
+              <FinancialManagement
+                requestJson={requestJson}
+                canWrite={role === 'admin' || role === 'manager'}
+                dashboard={dashboard}
+              />
+            ) : null}
+
             {activeTab === 'paymentNotifications' ? (
               <div className="stacked-sections">
                 <section className="panel">
@@ -4834,13 +4839,12 @@ const handleLogin = async (event) => {
 <td>
   {pending ? (
     <div className="form-actions">
-      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedManual')}>Verify manually</button>
-      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'VerifiedAuto')}>Verify and record</button>
+      <button type="button" className="small-btn" onClick={() => setActiveTab('financial')}>Confirm and record receipt</button>
       <button type="button" className="small-btn danger" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'Rejected')}>Reject</button>
     </div>
   ) : awaitingRentRecording ? (
     <div className="form-actions">
-      <button type="button" className="small-btn" disabled={busy} onClick={() => handlePaymentNotificationReview(notification, 'MarkManuallyRecorded')}>Already recorded</button>
+      <button type="button" className="small-btn" onClick={() => setActiveTab('financial')}>Continue receipt recording</button>
     </div>
   ) : 'Reviewed'}
   {busy ? <p>Saving review...</p> : null}

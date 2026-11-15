@@ -203,12 +203,9 @@ test('manager list joins tenant names only through the matching lease relationsh
   assert.equal('email' in notifications.find((item) => item.id === 'valid'), false);
 });
 
-test('manager review actions call the atomic review RPC', async () => {
+test('only rejection uses the legacy review RPC; positive reviews fail closed', async () => {
   const actions = [
-    ['notification-1', 'VerifiedManual'],
-    ['notification-2', 'VerifiedAuto'],
-    ['notification-3', 'MarkManuallyRecorded'],
-    ['notification-4', 'Rejected'],
+    ['notification-1', 'Rejected'],
   ];
 
   for (const [notificationId, action] of actions) {
@@ -223,9 +220,31 @@ test('manager review actions call the atomic review RPC', async () => {
 
   assert.deepEqual(
     rpcCalls.map((call) => call.params.p_action),
-    ['VerifiedManual', 'VerifiedAuto', 'MarkManuallyRecorded', 'Rejected']
+    ['Rejected']
   );
-  assert.equal(rpcCalls[0].params.p_reviewed_by, 'manager-1');
+
+  const manualReview = await reviewPaymentNotification({
+    notificationId: 'notification-2',
+    action: 'VerifiedManual',
+    reviewNote: 'Reviewed by manager',
+    reviewedBy: 'manager-1',
+  });
+  const automaticReview = await reviewPaymentNotification({
+    notificationId: 'notification-3',
+    action: 'VerifiedAuto',
+    reviewNote: 'Reviewed by manager',
+    reviewedBy: 'manager-1',
+  });
+  const alreadyRecorded = await reviewPaymentNotification({
+    notificationId: 'notification-4',
+    action: 'MarkManuallyRecorded',
+    reviewNote: 'Already captured',
+    reviewedBy: 'manager-1',
+  });
+  assert.equal(manualReview.status, 409);
+  assert.equal(automaticReview.status, 409);
+  assert.equal(alreadyRecorded.status, 409);
+  assert.equal(rpcCalls.length, 1, 'Positive actions must not bypass the receipt ledger.');
 
   rpcResponse = {
     data: null,
