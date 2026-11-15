@@ -484,20 +484,6 @@ BEGIN
         );
     END IF;
 
-    UPDATE public.payment_notifications
-       SET status = 'Verified - Awaiting Rent Recording',
-           recording_mode = 'Manual',
-           reviewed_at = NOW(),
-           reviewed_by = p_reviewed_by,
-           review_note = p_review_note
-     WHERE id = p_notification_id;
-
-    RETURN JSONB_BUILD_OBJECT(
-        'success', TRUE,
-        'status', 'Verified - Awaiting Rent Recording',
-        'recordingMode', 'Manual',
-        'notificationId', p_notification_id
-    );
 END;
 $function$;
 CREATE OR REPLACE FUNCTION public.void_financial_expense(
