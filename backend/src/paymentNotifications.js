@@ -175,6 +175,11 @@ export const reviewPaymentNotification = async ({ notificationId, action, review
       error: 'Action must be VerifiedManual, VerifiedAuto, MarkManuallyRecorded, or Rejected.',
     });
   }
+  if (normalizedAction !== 'Rejected') {
+    return response(409, {
+      error: 'Positive notification reviews require the financial receipts workflow with a Manager/Admin-confirmed actual receipt date.',
+    });
+  }
   if (normalizedNote.length > 1000) {
     return response(400, { error: 'The review note is too long.' });
   }

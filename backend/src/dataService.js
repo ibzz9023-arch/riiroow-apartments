@@ -1028,6 +1028,18 @@ const getSupabasePaymentContext = async (propertyId, payload) => {
 
 export const createPayment = async (payload) => {
   validatePaymentPayload(payload);
+  if (Number(payload.paidAmount ?? payload.paid_amount ?? 0) > 0) {
+    throw Object.assign(
+      new Error('Rent receipts must be recorded through the financial receipts workflow with an actual receipt date.'),
+      { code: 'PAYMENT_VALIDATION' }
+    );
+  }
+  if (payload.paidDate ?? payload.paid_date) {
+    throw Object.assign(
+      new Error('Receipt dates must be recorded through the financial receipts workflow.'),
+      { code: 'PAYMENT_VALIDATION' }
+    );
+  }
 
   if (supabase) {
     try {
@@ -1084,12 +1096,30 @@ export const updatePayment = async (id, payload) => {
   if (supabase) {
     try {
       const propertyId = await ensureProperty();
+      const { data: existingPayment, error: existingPaymentError } = await supabase
+        .from('payments')
+        .select('paid_amount, paid_date, method')
+        .eq('id', id)
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      if (existingPaymentError) throw existingPaymentError;
+      if (!existingPayment) throw new Error('Record not found.');
+      const existingPaidAmount = Number(existingPayment.paid_amount ?? 0);
+      const requestedPaidAmount = payload.paidAmount ?? payload.paid_amount;
+      if (requestedPaidAmount !== undefined && Number(requestedPaidAmount) !== existingPaidAmount) {
+        throw Object.assign(
+          new Error('Rent receipts must be recorded through the financial receipts workflow with an actual receipt date.'),
+          { code: 'PAYMENT_VALIDATION' }
+        );
+      }
       const { unit } = await getSupabasePaymentContext(propertyId, payload);
 
       const normalizedPayment = normalizePaymentSchemaPayload({
         ...payload,
         unit_id: unit.id,
         unit_number: unit.unit_number,
+        paidAmount: existingPaidAmount,
+        paid_date: existingPayment.paid_date,
       });
 
       const paymentPayload = {
@@ -1097,11 +1127,8 @@ export const updatePayment = async (id, payload) => {
         unit_id: normalizedPayment.unit_id,
         unit_number: normalizedPayment.unit_number,
         amount: normalizedPayment.amount,
-        paid_amount: normalizedPayment.paid_amount ?? normalizedPayment.paidAmount ?? 0,
         due_date: normalizedPayment.due_date ?? normalizedPayment.dueDate ?? null,
-        paid_date: normalizedPayment.paid_date ?? normalizedPayment.paidDate ?? null,
         status: normalizedPayment.status,
-        method: normalizedPayment.method ?? null,
         notes: normalizedPayment.notes ?? '',
       };
 
@@ -1129,14 +1156,29 @@ export const updatePayment = async (id, payload) => {
   const payments = state.payments || [];
   const paymentIndex = payments.findIndex((entry) => String(entry.id) === String(id));
   if (paymentIndex === -1) throw new Error('Record not found.');
+  const existingPayment = payments[paymentIndex];
+  const existingPaidAmount = Number(existingPayment.paid_amount ?? existingPayment.paidAmount ?? 0);
+  const requestedPaidAmount = payload.paidAmount ?? payload.paid_amount;
+  if (requestedPaidAmount !== undefined && Number(requestedPaidAmount) !== existingPaidAmount) {
+    throw Object.assign(
+      new Error('Rent receipts must be recorded through the financial receipts workflow with an actual receipt date.'),
+      { code: 'PAYMENT_VALIDATION' }
+    );
+  }
   const { unit, unitNumber } = getLocalPaymentContext(state, payload);
   payments[paymentIndex] = normalizePaymentRecord({
-    ...payments[paymentIndex],
+    ...existingPayment,
     ...normalizePaymentSchemaPayload({
       ...payload,
       unit_id: unit.id,
       unit_number: unitNumber,
+      paidAmount: existingPaidAmount,
+      paid_date: existingPayment.paid_date ?? existingPayment.paidDate ?? null,
+      method: existingPayment.method,
     }),
+    paid_amount: existingPaidAmount,
+    paid_date: existingPayment.paid_date ?? existingPayment.paidDate ?? null,
+    method: existingPayment.method,
   });
   saveData(state);
   return payments[paymentIndex];

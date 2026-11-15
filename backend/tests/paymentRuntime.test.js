@@ -66,64 +66,73 @@ test('verified partial payment retains its recorded balance', () => {
   assert.equal(result.status, 'Partially Paid');
 });
 
-test('createPayment persists schema-compatible partial payment data', async (t) => {
+test('createPayment refuses rent receipts without a confirmed actual receipt date', async (t) => {
   const original = readStore();
   t.after(() => restoreStore(original));
 
-  const result = await createPayment({
-    tenant_id: 'tenant-101',
-    unit_number: 101,
-    amount: 1200,
-    paidAmount: 600,
-    dueDate: '2099-12-31',
-    paidDate: '2099-01-01',
-    method: 'ACH',
-    notes: 'Runtime test payment',
-  });
-
-  assert.equal(result.paidAmount, 600);
-  assert.equal(result.remainingAmount, 600);
-  assert.equal(result.status, 'Partially Paid');
-  assert.equal(result.paid_amount, 600);
-
-  const persisted = readStore();
-  const savedPayment = persisted.payments.find((entry) => entry.id === result.id);
-
-  assert.ok(savedPayment, 'Expected the new payment to be persisted.');
-  assert.equal(savedPayment.paid_amount, 600);
-  assert.equal(savedPayment.status, 'Partially Paid');
-  assert.equal(savedPayment.amount, 1200);
+  await assert.rejects(
+    createPayment({
+      tenant_id: 'tenant-101',
+      unit_number: 101,
+      amount: 1200,
+      paidAmount: 600,
+      dueDate: '2099-12-31',
+      paidDate: '2099-01-01',
+      method: 'ACH',
+      notes: 'Runtime test payment',
+    }),
+    /financial receipts workflow/
+  );
+  await assert.rejects(
+    createPayment({
+      tenant_id: 'tenant-101',
+      unit_number: 101,
+      amount: 1200,
+      paidAmount: 0,
+      dueDate: '2099-12-31',
+      paidDate: '2026-11-03',
+      notes: 'Runtime test payment',
+    }),
+    /Receipt dates must be recorded through the financial receipts workflow/
+  );
+  assert.deepEqual(readStore(), original);
 });
 
-test('updatePayment preserves partial payment balances when editing an existing payment', async (t) => {
+test('updatePayment preserves recorded receipts and rejects paid amount edits', async (t) => {
   const original = readStore();
   t.after(() => restoreStore(original));
 
   const existingPayment = readStore().payments.find((entry) => Number(entry.amount) >= 1000 && Number(entry.amount) < 2000);
 
   assert.ok(existingPayment, 'Expected base payment fixture to exist for update test.');
+  const existingPaidAmount = Number(existingPayment.paid_amount ?? existingPayment.paidAmount ?? 0);
+  const alteredPaidAmount = existingPaidAmount === 0 ? 1 : existingPaidAmount - 1;
+
+  await assert.rejects(updatePayment(existingPayment.id, {
+    tenant_id: existingPayment.tenantId || existingPayment.tenant_id,
+    unit_number: existingPayment.unitNumber || existingPayment.unit_number,
+    amount: existingPayment.amount,
+    paidAmount: alteredPaidAmount,
+    dueDate: existingPayment.dueDate || existingPayment.due_date,
+    method: existingPayment.method,
+    notes: existingPayment.notes || '',
+  }), /financial receipts workflow/);
 
   const result = await updatePayment(existingPayment.id, {
     tenant_id: existingPayment.tenantId || existingPayment.tenant_id,
     unit_number: existingPayment.unitNumber || existingPayment.unit_number,
     amount: existingPayment.amount,
-    paidAmount: 1000,
+    paidAmount: existingPaidAmount,
     dueDate: existingPayment.dueDate || existingPayment.due_date,
-    paidDate: '2099-01-05',
     method: existingPayment.method,
     notes: existingPayment.notes || '',
   });
-
-  assert.equal(result.paidAmount, 1000);
-  assert.equal(result.remainingAmount, 850);
-  assert.equal(result.status, 'Partially Paid');
-  assert.equal(result.paid_amount, 1000);
+  assert.equal(result.paidAmount, existingPaidAmount);
+  assert.equal(result.paid_amount, existingPaidAmount);
 
   const persisted = readStore();
   const savedPayment = persisted.payments.find((entry) => entry.id === existingPayment.id);
 
   assert.ok(savedPayment, 'Expected the updated payment to remain persisted.');
-  assert.equal(savedPayment.paid_amount, 1000);
-  assert.equal(savedPayment.status, 'Partially Paid');
-  assert.equal(savedPayment.remainingAmount, 850);
+  assert.equal(savedPayment.paid_amount, existingPaidAmount);
 });

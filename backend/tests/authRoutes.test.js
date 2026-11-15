@@ -188,6 +188,23 @@ test('authorization boundaries reject accountants and managers from restricted r
   })).status, 403);
 });
 
+test('accountants retain read-only access to legacy rent payments', async () => {
+  for (const path of ['/api/payments', '/api/tenants/tenant-1/payments']) {
+    assert.equal((await request(path, {
+      token: tokenFor(managerId, 'Manager'),
+    })).status, 200);
+    assert.equal((await request(path, {
+      token: tokenFor(accountantId, 'Accountant'),
+    })).status, 200);
+  }
+
+  assert.equal((await request('/api/payments', {
+    method: 'POST',
+    token: tokenFor(accountantId, 'Accountant'),
+    body: { amount: 100 },
+  })).status, 403);
+});
+
 test('review and deposit audit fields use the verified session ID, not body-supplied values', async () => {
   auditCalls.length = 0;
   const body = { action: 'VerifiedAuto', reviewNote: 'verified', reviewedBy: adminId, recordedBy: adminId };
