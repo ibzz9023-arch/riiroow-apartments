@@ -434,7 +434,7 @@ test('financial migration defines atomic posting, credit, history and snapshot s
   assert.match(rpcs, /Explicit acknowledgement is required/i);
   assert.match(rpcs, /Receipt recording requires the financial receipt endpoint/i);
   const notificationReview = rpcs.match(
-    /CREATE OR REPLACE FUNCTION public\\.review_payment_notification\\([\\s\\S]*?\\$function\\$;/i
+    /CREATE OR REPLACE FUNCTION public\.review_payment_notification\([\s\S]*?\$function\$;/i
   )?.[0] || '';
   assert.ok(notificationReview, 'notification review RPC must be defined');
   assert.match(notificationReview, /IF p_action IS NULL OR p_action <> 'Rejected'/i);
