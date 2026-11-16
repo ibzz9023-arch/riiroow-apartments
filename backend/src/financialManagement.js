@@ -346,11 +346,10 @@ export const listTenantCreditTransactions = async (accountId) => {
 
 export const listUndatedLegacyBalances = async () => runQuery(
   requireServiceRole()
-    .from('rent_legacy_balances')
-    .select('id, payment_id, tenant_id, property_id, legacy_amount, source_paid_date, verification_status, classification, evidence_note, created_at')
+    .from('rent_legacy_balances_ledger_vw')
+    .select('id, payment_id, unit_id, tenant_id, unit_number, amount, paid_date, verification_status, legacy_amount, source_paid_date, classification, evidence_note, reconciled_at, reconciled_by, created_at, property_id, lease_id, due_date, payment_status, payment_paid_amount, historical_tenant_id, historical_verification_status, tenant_id_mismatch, property_id_mismatch')
     .order('created_at', { ascending: true })
 );
-
 export const reconcileLegacyBalance = ({ balanceId, body = {}, actorId }) =>
   callRpc('reconcile_rent_legacy_balance', {
     p_balance_id: assertUuid(balanceId, 'Legacy balance ID'),

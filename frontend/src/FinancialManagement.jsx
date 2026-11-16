@@ -1096,16 +1096,30 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
         {legacyBalances.length === 0 ? <p className="muted">No historical rent balances require reconciliation.</p> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Tenant</th><th>Amount</th><th>Classification</th><th>Recorded date</th><th>Confirmed source receipt date</th>{canWrite ? <th>Evidence / action</th> : <th>Evidence note</th>}</tr></thead>
+              <thead><tr><th>Unit ID</th><th>Tenant ID</th><th>Unit Number</th><th>Tenant</th><th>Amount</th><th>Paid Date</th><th>Verification Status</th><th>Legacy Amount</th><th>Classification</th><th>Recorded Date</th><th>Confirmed Historical Receipt Date</th><th>Reconciled At</th><th>Reconciled By</th>{canWrite ? <th>Evidence / action</th> : <th>Evidence note</th>}</tr></thead>
               <tbody>{legacyBalances.map((balance) => {
                 const form = legacyForms[balance.id] || {};
                 return (
                   <tr key={balance.id}>
+                    <td>{balance.unit_id || '—'}</td>
+                    <td>{balance.tenant_id || '—'}</td>
+                    <td>{balance.unit_number ?? '—'}</td>
                     <td>{tenantName(balance.tenant_id)}</td>
+                    <td>{formatMoney(balance.amount)}</td>
+                    <td>{formatDate(balance.paid_date)}</td>
+                    <td>
+                      {balance.verification_status ? (
+                        <span className={statusClass(balance.verification_status)}>
+                          {balance.verification_status}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td>{formatMoney(balance.legacy_amount)}</td>
                     <td>{balance.classification}</td>
                     <td>{formatDate(balance.created_at)}</td>
                     <td>{formatDate(balance.source_paid_date)}</td>
+                    <td>{formatDate(balance.reconciled_at)}</td>
+                    <td>{balance.reconciled_by || '—'}</td>
                     <td>
                       {balance.classification === 'reconciled' ? (balance.evidence_note || '—') : canWrite && balance.classification === 'undated' ? (
                         <div className="financial-legacy-fields">
