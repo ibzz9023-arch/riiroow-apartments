@@ -56,6 +56,7 @@ import {
   getSessionSecret,
   requireRoles,
 } from './src/authSession.js';
+import { financialRouter } from './src/financialRoutes.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -1545,6 +1546,7 @@ app.get(['/signature.png', '/riiroow-apartments/signature.png'], (req, res, next
     if (error) next(error);
   });
 });
+app.use('/api/financial', financialRouter);
 app.use(express.static(frontendDist));
 
 app.get('*', (req, res, next) => {

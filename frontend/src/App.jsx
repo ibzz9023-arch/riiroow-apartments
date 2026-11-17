@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
 import QRCode from 'qrcode';
+import FinancialManagement from './FinancialManagement';
 
 
 const formatCurrency = (value) =>
@@ -3011,11 +3012,12 @@ const handleLogin = async (event) => {
     ['paymentNotifications', 'Payment Notifications'],
     ['moveOutRequests', 'Move-out Requests'],
     ['maintenance', 'Maintenance'],
+    ['financial', 'Financial Management'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
-    if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'financial', 'reports'].includes(key);
+    if (role === 'accountant') return ['overview', 'payments', 'leases', 'deposits', 'financial', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return true;
   });
@@ -4823,6 +4825,14 @@ const handleLogin = async (event) => {
                   </div>
                 </section>
               </div>
+            ) : null}
+
+            {activeTab === 'financial' ? (
+              <FinancialManagement
+                requestJson={requestJson}
+                canWrite={role === 'admin' || role === 'manager'}
+                dashboard={dashboard}
+              />
             ) : null}
 
             {activeTab === 'reports' ? (
