@@ -499,10 +499,32 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
     String(expense.financial_expense_categories?.id) === categoryFilter
   ));
   const currentVersions = snapshot?.versions || [];
-  const maxExpenseAmount = Math.max(
-    1,
-    ...Object.values(summary?.expenseBreakdown || {}).map(Number)
+  const expenseBreakdownEntries = Object.entries(summary?.expenseBreakdown || {})
+    .map(([category, amount]) => ({ category, amount: Number(amount || 0) }))
+    .filter((entry) => entry.amount > 0);
+  const expenseBreakdownTotal = expenseBreakdownEntries.reduce(
+    (total, entry) => total + entry.amount,
+    0
   );
+  const pieColors = ['#16805c', '#d69a35', '#4f74c8', '#a65f9b', '#c85d5d', '#6a8f9f', '#7d9a55'];
+  let pieOffset = 0;
+  const pieSegments = expenseBreakdownEntries.map((entry, index) => {
+    const percentage = expenseBreakdownTotal > 0 ? (entry.amount / expenseBreakdownTotal) * 100 : 0;
+    const start = pieOffset;
+    pieOffset += percentage;
+    return {
+      ...entry,
+      percentage,
+      color: pieColors[index % pieColors.length],
+      start,
+      end: pieOffset,
+    };
+  });
+  const pieGradient = pieSegments.length > 0
+    ? `conic-gradient(${pieSegments.map((segment) =>
+        `${segment.color} ${segment.start}% ${segment.end}%`
+      ).join(', ')})`
+    : 'conic-gradient(#e5e7eb 0 100%)';
   const selectedApplyAccount = accountFor(applyForm.accountId);
   const applicablePayments = selectedApplyAccount
     ? matchingPayments(selectedApplyAccount.tenant_id, selectedApplyAccount.property_id)
@@ -578,19 +600,28 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
         {Object.keys(summary?.expenseBreakdown || {}).length === 0 ? (
           <p className="muted">No paid expenses for this reporting month.</p>
         ) : (
-          <div className="financial-bars">
-            {Object.entries(summary.expenseBreakdown).map(([category, amount]) => (
-              <div className="financial-bar-row" key={category}>
-                <span>{category}</span>
-                <div className="financial-bar-track">
-                  <div
-                    className="financial-bar-fill"
-                    style={{ width: `${Math.max(3, (Number(amount) / maxExpenseAmount) * 100)}%` }}
-                  />
-                </div>
-                <strong>{formatMoney(amount)}</strong>
+          <div className="financial-pie-layout">
+            <div
+              className="financial-pie-chart"
+              role="img"
+              aria-label={`Expense breakdown total ${formatMoney(expenseBreakdownTotal)}`}
+              style={{ background: pieGradient }}
+            >
+              <div className="financial-pie-center">
+                <span>Total</span>
+                <strong>{formatMoney(expenseBreakdownTotal)}</strong>
               </div>
-            ))}
+            </div>
+            <div className="financial-pie-legend">
+              {pieSegments.map((segment) => (
+                <div className="financial-pie-legend-row" key={segment.category}>
+                  <span className="financial-pie-swatch" style={{ background: segment.color }} />
+                  <span>{segment.category}</span>
+                  <strong>{formatMoney(segment.amount)}</strong>
+                  <span>{segment.percentage.toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </section>

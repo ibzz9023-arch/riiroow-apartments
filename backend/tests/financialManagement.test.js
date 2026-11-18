@@ -470,6 +470,18 @@ test('financial migration defines atomic posting, credit, history and snapshot s
   assert.doesNotMatch(schema, /GRANT ALL ON TABLE public\.%I TO service_role/i);
 });
 
+test('frontend renders an actual labeled expense pie chart', () => {
+  const source = readFileSync(
+    new URL('../../frontend/src/FinancialManagement.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /financial-pie-chart/);
+  assert.match(source, /conic-gradient/);
+  assert.match(source, /financial-pie-legend/);
+  assert.match(source, /toFixed\(1\)/);
+  assert.match(source, /expenseBreakdownTotal/);
+});
+
 test('financial routes allow read-only Accountant access and restrict writes', () => {
   const allowedRoles = [];
   const router = createFinancialRouter({
