@@ -1878,7 +1878,7 @@ const handleLogin = async (event) => {
 
       if (editingLeaseId && String(user?.role || '').toLowerCase() === 'manager') {
         const existingLease = (dashboard?.leases || []).find((lease) => String(lease.id) === String(editingLeaseId));
-        if (existingLease && ['terminated', 'expired'].includes(String(body.status || '').trim().toLowerCase())) {
+        if (existingLease && ['terminated', 'expired'].includes(String(body.status || '').trim().toLowerCase()) && !['terminated', 'expired'].includes(String(existingLease.status || '').trim().toLowerCase())) {
           const reason = window.prompt(`Explain why the lease for Unit ${body.unitNumber} should be ended:`);
           if (reason === null) return;
           if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the lease-ending request.');
