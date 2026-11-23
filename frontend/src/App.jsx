@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
 import FinancialManagement from './FinancialManagement.jsx';
+import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 
 
@@ -3328,11 +3329,12 @@ const handleLogin = async (event) => {
     ['financial', 'Financial Management'],
     ['paymentNotifications', 'Payment Notifications'],
     ['moveOutRequests', 'Move-out Requests'],
+    ['approvalRequests', 'Approval Requests'],
     ['maintenance', 'Maintenance'],
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'maintenance'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'maintenance', 'approvalRequests'].includes(key);
     if (role === 'accountant') return ['overview', 'payments', 'financial', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return false;
@@ -4939,6 +4941,7 @@ const handleLogin = async (event) => {
                 </section>
               </div>
             ) : null}
+            {activeTab === 'approvalRequests' ? <ApprovalRequests role={user?.role} token={token} /> : null}
             {activeTab === 'maintenance' ? (
               <div className="stacked-sections">
                 <section className="panel">
