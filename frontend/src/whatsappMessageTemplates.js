@@ -5,7 +5,7 @@ export const DEFAULT_WHATSAPP_TEMPLATE = [
   'Secure link (expires in 10 minutes): {url}',
   '',
   'Please review the attached evidence.',
-].join('\n');
+].join('\\n');
 
 export const WHATSAPP_TEMPLATE_STORAGE_KEY = 'riiroow.whatsapp.maintenance-template.v1';
 
