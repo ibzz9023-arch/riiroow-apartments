@@ -483,28 +483,6 @@ test('frontend renders an actual labeled expense pie chart', () => {
 });
 
 test('financial routes deny Managers, allow Accountant reads, and reserve writes for Admin', async (t) => {
-  const app = express();
-  app.use(express.json());
-  app.use('/financial', createFinancialRouter({
-    authorize: (...roles) => (req, res, next) => (
-      roles.includes(req.auth?.role)
-        ? next()
-        : res.status(403).json({ error: 'Forbidden' })
-    ),
-    service: {
-      async getFinancialSummary() {
-        return { netProfit: 42 };
-      },
-      async recordRentReceipt() {
-        return { success: true };
-      },
-    },
-  }));
-  app.use((req, _res, next) => {
-    req.auth = { sub: actorId, role: req.headers['x-test-role'] };
-    next();
-  });
-  // The test identity middleware must run before the financial router.
   const serverApp = express();
   serverApp.use(express.json());
   serverApp.use((req, _res, next) => {
