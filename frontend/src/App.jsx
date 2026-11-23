@@ -32,7 +32,7 @@ const formatDateTime = (value) => {
     timeStyle: 'short',
   }).format(date);
 };
-const initialLogin = { email: 'admin@riiroow.com', password: 'admin123' };
+
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -3426,14 +3426,14 @@ const handleLogin = async (event) => {
             Welcome back. Access your apartment operations dashboard.
           </div>
 
-          <form onSubmit={handleLogin} className="auth-form" aria-live="polite">
+          <form onSubmit={handleLogin} className="auth-form" aria-live="polite" autoComplete="off">
             <label>
               Email
-              <input name="email" type="email" defaultValue={initialLogin.email} autoComplete="email" required />
+              <input name="email" type="email" autoComplete="off" placeholder="Enter your email" required />
             </label>
             <label>
               Password
-              <input name="password" type="password" defaultValue={initialLogin.password} autoComplete="current-password" required />
+              <input name="password" type="password" autoComplete="off" placeholder="Enter your password" required />
             </label>
             {error ? <p className="error-text" role="alert">{error}</p> : null}
             <button type="submit" className="primary-btn">Sign in to dashboard</button>
