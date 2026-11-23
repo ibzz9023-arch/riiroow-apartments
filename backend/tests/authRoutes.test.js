@@ -128,11 +128,14 @@ test('valid manager and admin sessions reach manager routes with verified user i
     });
     assert.equal(response.status, 200);
   }
+  assert.equal((await request('/api/maintenance', { token: tokenFor(managerId, 'Manager') })).status, 200);
 });
 
-test('user list never returns password fields', async () => {
-  const response = await request('/api/users', { token: tokenFor(managerId, 'Manager') });
+test('user list is admin-only and never returns password fields', async () => {
+  const managerResponse = await request('/api/users', { token: tokenFor(managerId, 'Manager') });
+  assert.equal(managerResponse.status, 403);
 
+  const response = await request('/api/users', { token: tokenFor(adminId, 'Admin') });
   assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.length, 1);
