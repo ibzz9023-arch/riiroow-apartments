@@ -3738,8 +3738,12 @@ const handleLogin = async (event) => {
                     <div className="mini-list">
                       <div><span>Units</span><strong>{stats.totalUnits ?? 0}</strong></div>
                       <div><span>Vacant</span><strong>{stats.vacantUnits ?? 0}</strong></div>
-                      <div><span>Collected this month</span><strong>{formatCurrency(stats.collectedThisMonth ?? 0)}</strong></div>
-                      <div><span>Collected this year</span><strong>{formatCurrency(stats.collectedThisYear ?? 0)}</strong></div>
+                      {role !== 'manager' && (
+                        <>
+                          <div><span>Collected this month</span><strong>{formatCurrency(stats.collectedThisMonth ?? 0)}</strong></div>
+                          <div><span>Collected this year</span><strong>{formatCurrency(stats.collectedThisYear ?? 0)}</strong></div>
+                        </>
+                      )}
                       <div><span>Current month rent paid</span><strong>{formatCurrency(stats.currentMonthRentPaid ?? 0)}</strong></div>
                       <div><span>Outstanding rent</span><strong>{formatCurrency(stats.overduePayments)}</strong></div>
                     </div>
