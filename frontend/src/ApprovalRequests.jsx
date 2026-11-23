@@ -27,7 +27,7 @@ export default function ApprovalRequests({ role, token }) {
   const [reviewReasons, setReviewReasons] = useState({});
 
   const request = useCallback(async (path, options = {}) => {
-    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\\/$/, '');
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
     const response = await fetch(`${apiBaseUrl}${path}`, {
       ...options,
       headers: {
