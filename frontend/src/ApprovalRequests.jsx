@@ -11,7 +11,7 @@ const REQUEST_TYPES = [
 const prettyType = (value) => REQUEST_TYPES.find(([key]) => key === value)?.[1] || value;
 const prettyStatus = (value) => String(value || '').replace(/^./, (letter) => letter.toUpperCase());
 
-export default function ApprovalRequests({ role, token }) {
+export default function ApprovalRequests({ role, token, onShare }) {
   const isAdmin = String(role || '').toLowerCase() === 'admin';
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -156,7 +156,15 @@ export default function ApprovalRequests({ role, token }) {
                     </td>
                     <td>
                       <div>{item.reason}</div>
-                      {item.details?.description ? <small>{item.details.description}</small> : null}
+                      {item.details && Object.keys(item.details).length ? (
+                        <div className="muted">
+                          {Object.entries(item.details).map(([key, value]) => (
+                            <div key={key}>
+                              {key}: {value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </td>
                     <td>{prettyStatus(item.status)}</td>
                     <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '—'}</td>
@@ -176,6 +184,13 @@ export default function ApprovalRequests({ role, token }) {
                           {item.reviewedAt ? <small>{new Date(item.reviewedAt).toLocaleString()}</small> : null}
                         </div>
                       )}
+                      <button
+                        type="button"
+                        className="small-btn"
+                        onClick={() => onShare?.(`Riiroow Apartments approval request\nType: ${prettyType(item.requestType)}\nTitle: ${item.title}\nReason: ${item.reason}\nDetails: ${item.details?.description || '—'}\nStatus: ${prettyStatus(item.status)}\nSubmitted: ${item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '—'}\nReview note: ${item.reviewReason || '—'}`)}
+                      >
+                        WhatsApp
+                      </button>
                     </td>
                   </tr>
                 ))}

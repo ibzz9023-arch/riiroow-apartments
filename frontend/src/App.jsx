@@ -4,6 +4,15 @@ import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 
+const shareViaWhatsApp = (message, phone = '') => {
+  const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
+  if (reviewedMessage === null) return;
+  const digits = String(phone || '').trim().startsWith('+')
+    ? String(phone).replace(/\D/g, '')
+    : '';
+  const recipient = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
+  window.open(`${recipient}?text=${encodeURIComponent(reviewedMessage)}`, '_blank', 'noopener,noreferrer');
+};
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -1038,7 +1047,7 @@ const [user, setUser] = useState(null);
         ).join('\n');
 
         const message = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure links expire after 10 minutes.`;
-        popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+        shareViaWhatsApp(message);
       });
 
       popup.document.querySelectorAll('[data-action]').forEach((button) => {
@@ -1060,7 +1069,7 @@ const [user, setUser] = useState(null);
           }
 
           if (action === 'whatsapp') {
-            popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+            shareViaWhatsApp(message);
             return;
           }
 
@@ -1283,6 +1292,33 @@ const printUnitQRCodes = async () => {
     const amount = Number(depositForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter an amount greater than zero.');
+      return;
+    }
+
+    if (depositForm.type === 'refund' && String(user?.role || '').toLowerCase() === 'manager') {
+      const lease = (dashboard?.leases || []).find((item) => String(item.id) === String(selectedDepositLeaseId));
+      const reason = window.prompt(`Explain why a ${formatCurrency(amount)} security-deposit refund should be issued for Unit ${lease?.unitNumber || '—'}:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the refund request.');
+        return;
+      }
+      setDepositLoading(true);
+      setError('');
+      setInfoMessage('');
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'security_deposit_refund',
+          title: `Security-deposit refund — Unit ${lease?.unitNumber || '—'}`,
+          reason: reason.trim(),
+          details: { leaseId: selectedDepositLeaseId, unitNumber: lease?.unitNumber || null, amount, transactionDate: depositForm.transactionDate, notes: depositForm.notes },
+        });
+        setInfoMessage('Security-deposit refund request submitted to Admin. No refund has been recorded.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the security-deposit refund request.');
+      } finally {
+        setDepositLoading(false);
+      }
       return;
     }
 
@@ -1678,6 +1714,13 @@ const handleLogin = async (event) => {
     }
   };
 
+  const submitManagerApprovalRequest = async ({ requestType, title, reason, details }) => {
+    await requestJson('/api/approval-requests', {
+      method: 'POST',
+      body: { requestType, title, reason, details },
+    });
+  };
+
   const handleUnitSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -1696,6 +1739,23 @@ const handleLogin = async (event) => {
 
       if (!payload.unitNumber || !payload.rent) {
         throw new Error('Unit number and rent are required.');
+      }
+
+      if (editingUnitId && String(user?.role || '').toLowerCase() === 'manager') {
+        const existingUnit = (dashboard?.units || []).find((unit) => String(unit.id) === String(editingUnitId));
+        if (existingUnit && Number(existingUnit.rent) !== payload.rent) {
+          const reason = window.prompt(`Explain why Unit ${payload.unitNumber} rent should change from ${formatCurrency(existingUnit.rent)} to ${formatCurrency(payload.rent)}:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the rent-change request.');
+          await submitManagerApprovalRequest({
+            requestType: 'rent_change',
+            title: `Change rent for Unit ${payload.unitNumber}`,
+            reason: reason.trim(),
+            details: { target: 'unit', unitId: editingUnitId, unitNumber: payload.unitNumber, currentRent: existingUnit.rent, requestedRent: payload.rent },
+          });
+          setInfoMessage('Rent-change request submitted to Admin. The unit rent has not been changed.');
+          return;
+        }
       }
 
       if (editingUnitId) {
@@ -1816,6 +1876,36 @@ const handleLogin = async (event) => {
         notes: leaseForm.notes,
       };
 
+      if (editingLeaseId && String(user?.role || '').toLowerCase() === 'manager') {
+        const existingLease = (dashboard?.leases || []).find((lease) => String(lease.id) === String(editingLeaseId));
+        if (existingLease && ['terminated', 'expired'].includes(String(body.status || '').trim().toLowerCase()) && !['terminated', 'expired'].includes(String(existingLease.status || '').trim().toLowerCase())) {
+          const reason = window.prompt(`Explain why the lease for Unit ${body.unitNumber} should be ended:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the lease-ending request.');
+          await submitManagerApprovalRequest({
+            requestType: 'lease_termination',
+            title: `End lease for Unit ${body.unitNumber}`,
+            reason: reason.trim(),
+            details: { leaseId: editingLeaseId, unitNumber: body.unitNumber, tenantId: body.tenantId, requestedStatus: body.status },
+          });
+          setInfoMessage('Lease-ending request submitted to Admin. The lease status has not been changed.');
+          return;
+        }
+        if (existingLease && Number(existingLease.monthlyRent) !== body.monthlyRent) {
+          const reason = window.prompt(`Explain why Unit ${body.unitNumber} monthly rent should change from ${formatCurrency(existingLease.monthlyRent)} to ${formatCurrency(body.monthlyRent)}:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the rent-change request.');
+          await submitManagerApprovalRequest({
+            requestType: 'rent_change',
+            title: `Change lease rent for Unit ${body.unitNumber}`,
+            reason: reason.trim(),
+            details: { target: 'lease', leaseId: editingLeaseId, unitNumber: body.unitNumber, currentRent: existingLease.monthlyRent, requestedRent: body.monthlyRent },
+          });
+          setInfoMessage('Rent-change request submitted to Admin. The lease rent has not been changed.');
+          return;
+        }
+      }
+
       if (editingLeaseId) {
         await requestJson(`/api/leases/${editingLeaseId}`, {
           method: 'PATCH',
@@ -1900,6 +1990,27 @@ const handleLogin = async (event) => {
   };
 
   const handleTerminateLease = async (lease) => {
+    if (String(user?.role || '').toLowerCase() === 'manager') {
+      const reason = window.prompt(`Explain why the lease for Unit ${lease.unitNumber} should be terminated:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the lease-termination request.');
+        return;
+      }
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'lease_termination',
+          title: `Terminate lease for Unit ${lease.unitNumber}`,
+          reason: reason.trim(),
+          details: { leaseId: lease.id, unitNumber: lease.unitNumber, tenantId: lease.tenantId, tenantName: lease.tenantName || '' },
+        });
+        setInfoMessage('Lease-termination request submitted to Admin. The lease remains active until Admin takes action.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the lease-termination request.');
+      }
+      return;
+    }
+
     const confirmed = window.confirm(
       `Terminate lease ${lease.id} for unit ${lease.unitNumber}?`
     );
@@ -2685,6 +2796,28 @@ const handleLogin = async (event) => {
   };
 
   const deleteTenant = async (tenantId) => {
+    if (String(user?.role || '').toLowerCase() === 'manager') {
+      const tenant = (dashboard?.tenants || []).find((item) => String(item.id) === String(tenantId));
+      if (!tenant) return;
+      const reason = window.prompt(`Explain why tenant ${tenant.name} (Unit ${tenant.unitNumber}) should be deleted:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the tenant-deletion request.');
+        return;
+      }
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'tenant_deletion',
+          title: `Delete tenant ${tenant.name} — Unit ${tenant.unitNumber}`,
+          reason: reason.trim(),
+          details: { tenantId: tenant.id, tenantName: tenant.name, unitNumber: tenant.unitNumber },
+        });
+        setInfoMessage('Tenant-deletion request submitted to Admin. The tenant record has not been deleted.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the tenant-deletion request.');
+      }
+      return;
+    }
     if (!window.confirm('Delete this tenant?')) return;
     try {
       await requestJson(`/api/tenants/${tenantId}`, { method: 'DELETE' });
@@ -3549,6 +3682,9 @@ const handleLogin = async (event) => {
           </div>
           <div className="header-actions">
             <span className="status-pill">{stats.totalUnits ?? 0} Units · {stats.occupiedUnits ?? 0} Occupied</span>
+            <button type="button" className="secondary-btn" onClick={() => shareViaWhatsApp('Hello, I would like to contact Riiroow Apartments management.')}>
+              Contact via WhatsApp
+            </button>
           </div>
         </header>
 
@@ -3881,8 +4017,9 @@ const handleLogin = async (event) => {
                               <td><span className={`tag ${getStatusClass(tenant.status)}`}>{tenant.status}</span></td>
                               <td className="action-cell">
                                 <button className="small-btn" onClick={() => viewTenantPayments(tenant)}>Payments</button>
+                                <button className="small-btn" onClick={() => shareViaWhatsApp(`Hello ${tenant.name}, this is Riiroow Apartments management regarding Unit ${tenant.unitNumber}.`, tenant.phone)}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
-                                <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
+                                <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>{role === 'manager' ? 'Request deletion' : 'Delete'}</button>
                               </td>
                             </tr>
                           ))}
@@ -4259,6 +4396,13 @@ const handleLogin = async (event) => {
                                     <button
                                       className="small-btn"
                                       type="button"
+                                      onClick={() => shareViaWhatsApp(`Hello ${tenant?.name || 'Tenant'}, please review your Riiroow Apartments lease details for Unit ${lease.unitNumber}.\nLease start: ${lease.startDate || '—'}\nLease end: ${lease.endDate || '—'}\nMonthly rent: ${formatCurrency(lease.monthlyRent)}\nSecurity deposit: ${formatCurrency(lease.securityDeposit)}\nStatus: ${lease.status || '—'}.`, tenant?.phone)}
+                                    >
+                                      WhatsApp
+                                    </button>
+                                    <button
+                                      className="small-btn"
+                                      type="button"
                                       onClick={() => openLeaseDocuments(lease)}
                                     >
                                       Documents
@@ -4281,7 +4425,7 @@ const handleLogin = async (event) => {
                                         type="button"
                                         onClick={() => handleTerminateLease(lease)}
                                       >
-                                        Terminate
+                                        {role === 'manager' ? 'Request termination' : 'Terminate'}
                                       </button>
                                     ) : null}
                                   </div>
@@ -4574,7 +4718,7 @@ const handleLogin = async (event) => {
                         className="small-btn"
                         disabled={depositLoading}
                       >
-                        Record Transaction
+                        {role === 'manager' && depositForm.type === 'refund' ? 'Submit refund request' : 'Record Transaction'}
                       </button>
                     </div>
                   </form>
@@ -4749,6 +4893,10 @@ const handleLogin = async (event) => {
                               <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
                               <td className="action-cell">
                                 <button className="small-btn" onClick={() => printPaymentReceipt(payment)}>Print Receipt</button>
+                                <button className="small-btn" onClick={() => {
+                                  const tenant = tenants.find((item) => String(item.id) === String(payment.tenantId));
+                                  shareViaWhatsApp(`Hello ${tenant?.name || 'Tenant'}, this is Riiroow Apartments regarding Unit ${payment.unitNumber}.\nAmount due: ${formatCurrency(payment.amount)}\nAmount paid: ${formatCurrency(payment.paidAmount)}\nRemaining balance: ${formatCurrency(payment.remainingAmount)}\nDue date: ${payment.dueDate || '—'}\nStatus: ${payment.status}.`, tenant?.phone);
+                                }}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditPayment(payment)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deletePayment(payment.id)}>Delete</button>
                               </td>
@@ -4851,6 +4999,16 @@ const handleLogin = async (event) => {
       <button type="button" className="small-btn" onClick={() => setActiveTab('financial')}>Continue receipt recording</button>
     </div>
   ) : 'Reviewed'}
+  <button
+    type="button"
+    className="small-btn"
+    onClick={() => {
+      const tenant = tenants.find((item) => String(item.id) === String(notification.tenant_id));
+      shareViaWhatsApp(`Riiroow Apartments payment notification\nTenant: ${notification.tenant_name || tenant?.name || '—'}\nUnit: ${notification.unit_number ?? '—'}\nAmount: ${formatCurrency(notification.amount)}\nMethod: ${notification.payment_method || '—'}\nReference: ${notification.transaction_reference || '—'}\nStatus: ${status}\n\nThis is a payment notification and not proof of receipt.`, tenant?.phone);
+    }}
+  >
+    WhatsApp
+  </button>
   {busy ? <p>Saving review...</p> : null}
 </td>
                               </tr>
@@ -4941,7 +5099,7 @@ const handleLogin = async (event) => {
                 </section>
               </div>
             ) : null}
-            {activeTab === 'approvalRequests' ? <ApprovalRequests role={user?.role} token={token} /> : null}
+            {activeTab === 'approvalRequests' ? <ApprovalRequests role={user?.role} token={token} onShare={shareViaWhatsApp} /> : null}
             {activeTab === 'maintenance' ? (
               <div className="stacked-sections">
                 <section className="panel">
@@ -5135,6 +5293,7 @@ const handleLogin = async (event) => {
                                   <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Completed')}>Complete</button>
                                 )}
                                 <button className="small-btn" onClick={() => viewMaintenanceEvidence(item)}>View Attachments</button>
+                                <button className="small-btn" onClick={() => shareViaWhatsApp(`Riiroow Apartments maintenance update — Unit ${item.unitNumber}\nIssue: ${item.title}\nPriority: ${item.priority}\nStatus: ${item.status}\nAssigned technician: ${item.assignedTechnician || 'Not assigned'}\nRequested: ${item.requestDate || '—'}\nDetails: ${item.description || '—'}`)}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
                               </td>

@@ -706,7 +706,7 @@ app.patch('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res)
   }
 });
 
-app.delete('/api/tenants/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
+app.delete('/api/tenants/:id', requireRoles('Admin'), async (req, res) => {
   try {
     await deleteEntity('tenants', req.params.id);
     res.json({ success: true });
@@ -967,6 +967,10 @@ app.get('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager', 'A
 
 app.post('/api/leases/:id/security-deposits', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
+    const requestedType = String(req.body?.transactionType ?? req.body?.transaction_type ?? '').trim().toLowerCase();
+    if (req.auth.role === 'Manager' && requestedType === 'refund') {
+      return res.status(403).json({ error: 'Security-deposit refunds require Admin approval. Submit an approval request first.' });
+    }
     const { recordSecurityDepositTransaction } = await import('./src/dataService.js');
     const transaction = await recordSecurityDepositTransaction(
       req.params.id,
@@ -1008,6 +1012,28 @@ app.post('/api/leases', requireRoles('Admin', 'Manager'), async (req, res) => {
 
 app.patch('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
+    if (req.auth.role === 'Manager') {
+      const currentLease = (await getLeases()).find((lease) => String(lease.id) === String(req.params.id));
+      if (!currentLease) return res.status(404).json({ error: 'Lease not found.' });
+      const proposedRent = req.body.monthlyRent ?? req.body.monthly_rent;
+      if (proposedRent === undefined) {
+        return res.status(400).json({ error: 'Include the current lease rent when updating a lease.' });
+      }
+      if (Number(proposedRent) !== Number(currentLease.monthlyRent ?? currentLease.monthly_rent)) {
+        return res.status(403).json({ error: 'Changing lease rent requires Admin approval. Submit a rent-change approval request first.' });
+      }
+      if (req.body.status === undefined) {
+        return res.status(400).json({ error: 'Include the current lease status when updating a lease.' });
+      }
+      const currentStatus = String(currentLease.status || '').trim().toLowerCase();
+      const proposedStatus = String(req.body.status || '').trim().toLowerCase();
+      if (
+        (['terminated', 'expired'].includes(currentStatus) || ['terminated', 'expired'].includes(proposedStatus)) &&
+        proposedStatus !== currentStatus
+      ) {
+        return res.status(403).json({ error: 'Ending or reactivating a lease requires Admin approval.' });
+      }
+    }
     const item = await updateLease(req.params.id, {
       tenant_id: req.body.tenantId,
       unit_id: req.body.unitId,
@@ -1026,7 +1052,7 @@ app.patch('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) 
   }
 });
 
-app.delete('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
+app.delete('/api/leases/:id', requireRoles('Admin'), async (req, res) => {
   try {
     const item = await terminateLease(req.params.id, req.body?.notes || '');
     res.json(item);
@@ -1570,6 +1596,16 @@ app.delete('/api/maintenance/:id', requireRoles('Admin', 'Manager', 'Maintenance
 
 app.patch('/api/units/:id', requireRoles('Admin', 'Manager'), async (req, res) => {
   try {
+    if (req.auth.role === 'Manager') {
+      const currentUnit = (await getUnits()).find((unit) => String(unit.id) === String(req.params.id));
+      if (!currentUnit) return res.status(404).json({ error: 'Unit not found.' });
+      if (req.body.rent === undefined) {
+        return res.status(400).json({ error: 'Include the current unit rent when updating a unit.' });
+      }
+      if (Number(req.body.rent) !== Number(currentUnit.rent)) {
+        return res.status(403).json({ error: 'Changing unit rent requires Admin approval. Submit a rent-change approval request first.' });
+      }
+    }
     const item = await updateEntity('units', req.params.id, {
       unit_number: Number(req.body.unitNumber ?? req.body.unit_number),
       floor: Number(req.body.floor),
