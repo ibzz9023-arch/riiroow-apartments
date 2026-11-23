@@ -11,7 +11,7 @@ const REQUEST_TYPES = [
 const prettyType = (value) => REQUEST_TYPES.find(([key]) => key === value)?.[1] || value;
 const prettyStatus = (value) => String(value || '').replace(/^./, (letter) => letter.toUpperCase());
 
-export default function ApprovalRequests({ role, token }) {
+export default function ApprovalRequests({ role, token, onShare }) {
   const isAdmin = String(role || '').toLowerCase() === 'admin';
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -176,6 +176,13 @@ export default function ApprovalRequests({ role, token }) {
                           {item.reviewedAt ? <small>{new Date(item.reviewedAt).toLocaleString()}</small> : null}
                         </div>
                       )}
+                      <button
+                        type="button"
+                        className="small-btn"
+                        onClick={() => onShare?.(`Riiroow Apartments approval request\nType: ${prettyType(item.requestType)}\nTitle: ${item.title}\nReason: ${item.reason}\nDetails: ${item.details?.description || '—'}\nStatus: ${prettyStatus(item.status)}\nSubmitted: ${item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '—'}\nReview note: ${item.reviewReason || '—'}`)}
+                      >
+                        WhatsApp
+                      </button>
                     </td>
                   </tr>
                 ))}
