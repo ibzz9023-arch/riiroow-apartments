@@ -1878,6 +1878,19 @@ const handleLogin = async (event) => {
 
       if (editingLeaseId && String(user?.role || '').toLowerCase() === 'manager') {
         const existingLease = (dashboard?.leases || []).find((lease) => String(lease.id) === String(editingLeaseId));
+        if (existingLease && ['terminated', 'expired'].includes(String(body.status || '').trim().toLowerCase())) {
+          const reason = window.prompt(`Explain why the lease for Unit ${body.unitNumber} should be ended:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the lease-ending request.');
+          await submitManagerApprovalRequest({
+            requestType: 'lease_termination',
+            title: `End lease for Unit ${body.unitNumber}`,
+            reason: reason.trim(),
+            details: { leaseId: editingLeaseId, unitNumber: body.unitNumber, tenantId: body.tenantId, requestedStatus: body.status },
+          });
+          setInfoMessage('Lease-ending request submitted to Admin. The lease status has not been changed.');
+          return;
+        }
         if (existingLease && Number(existingLease.monthlyRent) !== body.monthlyRent) {
           const reason = window.prompt(`Explain why Unit ${body.unitNumber} monthly rent should change from ${formatCurrency(existingLease.monthlyRent)} to ${formatCurrency(body.monthlyRent)}:`);
           if (reason === null) return;
