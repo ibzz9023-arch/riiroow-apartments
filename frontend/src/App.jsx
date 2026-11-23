@@ -4006,7 +4006,7 @@ const handleLogin = async (event) => {
                                 <button className="small-btn" onClick={() => viewTenantPayments(tenant)}>Payments</button>
                                 <button className="small-btn" onClick={() => shareViaWhatsApp(`Hello ${tenant.name}, this is Riiroow Apartments management regarding Unit ${tenant.unitNumber}.`, tenant.phone)}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
-                                <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
+                                <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>{role === 'manager' ? 'Request deletion' : 'Delete'}</button>
                               </td>
                             </tr>
                           ))}
@@ -4412,7 +4412,7 @@ const handleLogin = async (event) => {
                                         type="button"
                                         onClick={() => handleTerminateLease(lease)}
                                       >
-                                        Terminate
+                                        {role === 'manager' ? 'Request termination' : 'Terminate'}
                                       </button>
                                     ) : null}
                                   </div>
