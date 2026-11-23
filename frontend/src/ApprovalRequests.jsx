@@ -156,7 +156,15 @@ export default function ApprovalRequests({ role, token, onShare }) {
                     </td>
                     <td>
                       <div>{item.reason}</div>
-                      {item.details?.description ? <small>{item.details.description}</small> : null}
+                      {item.details && Object.keys(item.details).length ? (
+                        <small>
+                          {Object.entries(item.details).map(([key, value]) => (
+                            <div key={key}>
+                              {key}: {value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
+                            </div>
+                          ))}
+                        </small>
+                      ) : null}
                     </td>
                     <td>{prettyStatus(item.status)}</td>
                     <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '—'}</td>
