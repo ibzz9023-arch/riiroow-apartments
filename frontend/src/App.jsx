@@ -4,6 +4,15 @@ import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 
+const shareViaWhatsApp = (message, phone = '') => {
+  const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
+  if (reviewedMessage === null) return;
+  const digits = String(phone || '').trim().startsWith('+')
+    ? String(phone).replace(/\\D/g, '')
+    : '';
+  const recipient = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
+  window.open(`${recipient}?text=${encodeURIComponent(reviewedMessage)}`, '_blank', 'noopener,noreferrer');
+};
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('en-US', {
@@ -1038,7 +1047,7 @@ const [user, setUser] = useState(null);
         ).join('\n');
 
         const message = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure links expire after 10 minutes.`;
-        popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+        shareViaWhatsApp(message);
       });
 
       popup.document.querySelectorAll('[data-action]').forEach((button) => {
@@ -1060,7 +1069,7 @@ const [user, setUser] = useState(null);
           }
 
           if (action === 'whatsapp') {
-            popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+            shareViaWhatsApp(message);
             return;
           }
 
@@ -3549,6 +3558,9 @@ const handleLogin = async (event) => {
           </div>
           <div className="header-actions">
             <span className="status-pill">{stats.totalUnits ?? 0} Units · {stats.occupiedUnits ?? 0} Occupied</span>
+            <button type="button" className="secondary-btn" onClick={() => shareViaWhatsApp('Hello, I would like to contact Riiroow Apartments management.')}>
+              Contact via WhatsApp
+            </button>
           </div>
         </header>
 
@@ -3881,6 +3893,7 @@ const handleLogin = async (event) => {
                               <td><span className={`tag ${getStatusClass(tenant.status)}`}>{tenant.status}</span></td>
                               <td className="action-cell">
                                 <button className="small-btn" onClick={() => viewTenantPayments(tenant)}>Payments</button>
+                                <button className="small-btn" onClick={() => shareViaWhatsApp(`Hello ${tenant.name}, this is Riiroow Apartments management regarding Unit ${tenant.unitNumber}.`, tenant.phone)}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditTenant(tenant)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteTenant(tenant.id)}>Delete</button>
                               </td>
@@ -4255,6 +4268,13 @@ const handleLogin = async (event) => {
                                       onClick={() => printLease(lease)}
                                     >
                                       Print Lease
+                                    </button>
+                                    <button
+                                      className="small-btn"
+                                      type="button"
+                                      onClick={() => shareViaWhatsApp(`Hello ${tenant?.name || 'Tenant'}, please review your Riiroow Apartments lease details for Unit ${lease.unitNumber}.\nLease start: ${lease.startDate || '—'}\nLease end: ${lease.endDate || '—'}\nMonthly rent: ${formatCurrency(lease.monthlyRent)}\nSecurity deposit: ${formatCurrency(lease.securityDeposit)}\nStatus: ${lease.status || '—'}.`, tenant?.phone)}
+                                    >
+                                      WhatsApp
                                     </button>
                                     <button
                                       className="small-btn"
@@ -4749,6 +4769,10 @@ const handleLogin = async (event) => {
                               <td><span className={`tag ${getStatusClass(payment.status)}`}>{payment.status}</span></td>
                               <td className="action-cell">
                                 <button className="small-btn" onClick={() => printPaymentReceipt(payment)}>Print Receipt</button>
+                                <button className="small-btn" onClick={() => {
+                                  const tenant = tenants.find((item) => String(item.id) === String(payment.tenantId));
+                                  shareViaWhatsApp(`Hello ${tenant?.name || 'Tenant'}, this is Riiroow Apartments regarding Unit ${payment.unitNumber}.\nAmount due: ${formatCurrency(payment.amount)}\nAmount paid: ${formatCurrency(payment.paidAmount)}\nRemaining balance: ${formatCurrency(payment.remainingAmount)}\nDue date: ${payment.dueDate || '—'}\nStatus: ${payment.status}.`, tenant?.phone);
+                                }}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditPayment(payment)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deletePayment(payment.id)}>Delete</button>
                               </td>
@@ -4941,7 +4965,7 @@ const handleLogin = async (event) => {
                 </section>
               </div>
             ) : null}
-            {activeTab === 'approvalRequests' ? <ApprovalRequests role={user?.role} token={token} /> : null}
+            {activeTab === 'approvalRequests' ? <ApprovalRequests role={user?.role} token={token} onShare={shareViaWhatsApp} /> : null}
             {activeTab === 'maintenance' ? (
               <div className="stacked-sections">
                 <section className="panel">
@@ -5135,6 +5159,7 @@ const handleLogin = async (event) => {
                                   <button className="small-btn" onClick={() => updateMaintenanceStatus(item, 'Completed')}>Complete</button>
                                 )}
                                 <button className="small-btn" onClick={() => viewMaintenanceEvidence(item)}>View Attachments</button>
+                                <button className="small-btn" onClick={() => shareViaWhatsApp(`Riiroow Apartments maintenance update — Unit ${item.unitNumber}\nIssue: ${item.title}\nPriority: ${item.priority}\nStatus: ${item.status}\nAssigned technician: ${item.assignedTechnician || 'Not assigned'}\nRequested: ${item.requestDate || '—'}\nDetails: ${item.description || '—'}`)}>WhatsApp</button>
                                 <button className="small-btn" onClick={() => beginEditMaintenance(item)}>Edit</button>
                                 <button className="small-btn danger" onClick={() => deleteMaintenance(item.id)}>Delete</button>
                               </td>
