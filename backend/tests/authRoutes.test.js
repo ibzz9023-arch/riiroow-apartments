@@ -206,6 +206,11 @@ test('accountants retain read-only access to legacy rent payments', async () => 
     token: tokenFor(accountantId, 'Accountant'),
     body: { amount: 100 },
   })).status, 403);
+  assert.equal((await request('/api/payments', {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    body: { amount: 100 },
+  })).status, 201);
 });
 
 test('review and deposit audit fields use the verified session ID, not body-supplied values', async () => {
