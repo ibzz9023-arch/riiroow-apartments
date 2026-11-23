@@ -3332,7 +3332,7 @@ const handleLogin = async (event) => {
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'financial', 'paymentNotifications', 'moveOutRequests', 'reports'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'maintenance'].includes(key);
     if (role === 'accountant') return ['overview', 'payments', 'financial', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return false;
@@ -4714,9 +4714,11 @@ const handleLogin = async (event) => {
                 <section className="panel">
                   <div className="panel-header">
                     <h3>Payment history</h3>
-                    <button className="secondary-btn" type="button" onClick={exportPaymentsToExcel} disabled={!dashboard}>
-                      Export to Excel
-                    </button>
+                    {role !== 'manager' ? (
+                      <button className="secondary-btn" type="button" onClick={exportPaymentsToExcel} disabled={!dashboard}>
+                        Export to Excel
+                      </button>
+                    ) : null}
                   </div>
                   <div className="table-wrap">
                     {payments.length ? (
@@ -4763,7 +4765,7 @@ const handleLogin = async (event) => {
             {activeTab === 'financial' ? (
               <FinancialManagement
                 requestJson={requestJson}
-                canWrite={role === 'admin' || role === 'manager'}
+                canWrite={role === 'admin'}
                 dashboard={dashboard}
               />
             ) : null}

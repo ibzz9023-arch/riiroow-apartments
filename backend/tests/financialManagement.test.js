@@ -482,19 +482,47 @@ test('frontend renders an actual labeled expense pie chart', () => {
   assert.match(source, /expenseBreakdownTotal/);
 });
 
-test('financial routes allow read-only Accountant access and restrict writes', () => {
-  const allowedRoles = [];
-  const router = createFinancialRouter({
-    authorize: (...roles) => {
-      allowedRoles.push(...roles);
-      return (_request, _response, next) => next();
-    },
-    service: {},
+test('financial routes deny Managers, allow Accountant reads, and reserve writes for Admin', async (t) => {
+  const serverApp = express();
+  serverApp.use(express.json());
+  serverApp.use((req, _res, next) => {
+    req.auth = { sub: actorId, role: req.headers['x-test-role'] };
+    next();
   });
+  serverApp.use('/financial', createFinancialRouter({
+    authorize: (...roles) => (req, res, next) => (
+      roles.includes(req.auth?.role)
+        ? next()
+        : res.status(403).json({ error: 'Forbidden' })
+    ),
+    service: {
+      async getFinancialSummary() {
+        return { netProfit: 42 };
+      },
+      async recordRentReceipt() {
+        return { success: true };
+      },
+    },
+  }));
+  const server = serverApp.listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await once(server, 'listening');
+  const request = (role, path, method = 'GET') => fetch(
+    `http://127.0.0.1:${server.address().port}${path}`,
+    {
+      method,
+      headers: {
+        'X-Test-Role': role,
+        'Content-Type': 'application/json',
+      },
+      ...(method === 'POST' ? { body: JSON.stringify({}) } : {}),
+    },
+  );
 
-  assert.deepEqual(allowedRoles, [
-    'Admin', 'Manager', 'Accountant',
-    'Admin', 'Manager',
-  ]);
-  assert.ok(router.stack.length > 1);
+  assert.equal((await request('Manager', '/financial/summary')).status, 403);
+  assert.equal((await request('Accountant', '/financial/summary')).status, 200);
+  assert.equal((await request('Admin', '/financial/summary')).status, 200);
+  assert.equal((await request('Manager', '/financial/receipts', 'POST')).status, 403);
+  assert.equal((await request('Accountant', '/financial/receipts', 'POST')).status, 403);
+  assert.equal((await request('Admin', '/financial/receipts', 'POST')).status, 201);
 });

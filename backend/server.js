@@ -493,7 +493,7 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
   }
 });
 
-app.get('/api/users', requireRoles('Admin', 'Manager'), async (req, res) => {
+app.get('/api/users', requireRoles('Admin'), async (req, res) => {
   try {
     const users = await getUsers();
     res.json(users.map((user) => Object.fromEntries(
@@ -1117,10 +1117,10 @@ app.post(
   }
 );
 
-// Manager: list tenant payment notifications.
+// Admin: list tenant payment notifications.
 app.get(
   '/api/manager/payment-notifications',
-  requireRoles('Admin', 'Manager'),
+  requireRoles('Admin'),
   async (req, res) => {
     try {
       const notifications = await listManagerPaymentNotifications();
@@ -1134,10 +1134,10 @@ app.get(
   }
 );
 
-// Manager: review a tenant payment notification.
+// Admin: review a tenant payment notification.
 app.patch(
   '/api/manager/payment-notifications/:id',
-  requireRoles('Admin', 'Manager'),
+  requireRoles('Admin'),
   async (req, res) => {
     try {
       const result = await reviewPaymentNotification({
@@ -1178,10 +1178,10 @@ app.post(
   }
 );
 
-// Manager: list tenant move-out requests.
+// Admin: list tenant move-out requests.
 app.get(
   '/api/manager/move-out-requests',
-  requireRoles('Admin', 'Manager'),
+  requireRoles('Admin'),
   async (req, res) => {
     try {
       const result = await listManagerMoveOutRequests();
@@ -1195,10 +1195,10 @@ app.get(
   }
 );
 
-// Manager: approve or reject a move-out request without terminating its lease.
+// Admin: approve or reject a move-out request without terminating its lease.
 app.patch(
   '/api/manager/move-out-requests/:id',
-  requireRoles('Admin', 'Manager'),
+  requireRoles('Admin'),
   async (req, res) => {
     try {
       const result = await reviewMoveOutRequest({

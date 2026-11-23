@@ -121,18 +121,27 @@ const request = (path, { token, method = 'GET', body } = {}) => fetch(`${baseUrl
   ...(body ? { body: JSON.stringify(body) } : {}),
 });
 
-test('valid manager and admin sessions reach manager routes with verified user identities', async () => {
-  for (const [id, role] of [[managerId, 'Manager'], [adminId, 'Admin']]) {
-    const response = await request('/api/manager/payment-notifications', {
-      token: tokenFor(id, role),
-    });
-    assert.equal(response.status, 200);
-  }
+test('admin-only review queues stay restricted while managers retain maintenance access', async () => {
+  assert.equal((await request('/api/manager/payment-notifications', {
+    token: tokenFor(managerId, 'Manager'),
+  })).status, 403);
+  assert.equal((await request('/api/manager/move-out-requests', {
+    token: tokenFor(managerId, 'Manager'),
+  })).status, 403);
+  assert.equal((await request('/api/manager/payment-notifications', {
+    token: tokenFor(adminId, 'Admin'),
+  })).status, 200);
+  assert.equal((await request('/api/manager/move-out-requests', {
+    token: tokenFor(adminId, 'Admin'),
+  })).status, 200);
+  assert.equal((await request('/api/maintenance', { token: tokenFor(managerId, 'Manager') })).status, 200);
 });
 
-test('user list never returns password fields', async () => {
-  const response = await request('/api/users', { token: tokenFor(managerId, 'Manager') });
+test('user list is admin-only and never returns password fields', async () => {
+  const managerResponse = await request('/api/users', { token: tokenFor(managerId, 'Manager') });
+  assert.equal(managerResponse.status, 403);
 
+  const response = await request('/api/users', { token: tokenFor(adminId, 'Admin') });
   assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.length, 1);
@@ -203,6 +212,11 @@ test('accountants retain read-only access to legacy rent payments', async () => 
     token: tokenFor(accountantId, 'Accountant'),
     body: { amount: 100 },
   })).status, 403);
+  assert.equal((await request('/api/payments', {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    body: { amount: 100 },
+  })).status, 201);
 });
 
 test('review and deposit audit fields use the verified session ID, not body-supplied values', async () => {
@@ -213,28 +227,27 @@ test('review and deposit audit fields use the verified session ID, not body-supp
     method: 'PATCH',
     token: tokenFor(managerId, 'Manager'),
     body,
-  })).status, 200);
+  })).status, 403);
   assert.equal((await request('/api/manager/move-out-requests/request-1', {
     method: 'PATCH',
     token: tokenFor(managerId, 'Manager'),
     body: { action: 'Approved', reviewedBy: adminId },
-  })).status, 200);
+  })).status, 403);
   assert.equal((await request('/api/leases/lease-1/security-deposits', {
     method: 'POST',
     token: tokenFor(managerId, 'Manager'),
     body: { transactionType: 'payment', amount: 10, recordedBy: adminId },
   })).status, 201);
 
-  assert.equal(auditCalls[0][1].reviewedBy, managerId);
-  assert.equal(auditCalls[1][1].reviewedBy, managerId);
-  assert.equal(auditCalls[2][3], managerId);
+  assert.equal(auditCalls.length, 1);
+  assert.equal(auditCalls[0][3], managerId);
 
   assert.equal((await request('/api/manager/payment-notifications/notification-2', {
     method: 'PATCH',
     token: tokenFor(adminId, 'Admin'),
     body: { action: 'Rejected', reviewedBy: managerId },
   })).status, 200);
-  assert.equal(auditCalls[3][1].reviewedBy, adminId);
+  assert.equal(auditCalls[1][1].reviewedBy, adminId);
 });
 
 test('public tenant PIN verification remains independent of manager sessions', async () => {

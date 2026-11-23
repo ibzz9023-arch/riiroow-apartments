@@ -36,8 +36,8 @@ export const createFinancialRouter = ({
   service = financialManagement,
 } = {}) => {
   const router = Router();
-  const authorizeRead = authorize('Admin', 'Manager', 'Accountant');
-  const authorizeWrite = authorize('Admin', 'Manager');
+  const authorizeRead = authorize('Admin', 'Accountant');
+  const authorizeWrite = authorize('Admin');
   router.use((req, res, next) => (
     req.method === 'GET'
       ? authorizeRead(req, res, next)
