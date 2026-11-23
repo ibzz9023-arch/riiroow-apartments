@@ -1016,7 +1016,10 @@ app.patch('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) 
       const currentLease = (await getLeases()).find((lease) => String(lease.id) === String(req.params.id));
       if (!currentLease) return res.status(404).json({ error: 'Lease not found.' });
       const proposedRent = req.body.monthlyRent ?? req.body.monthly_rent;
-      if (proposedRent !== undefined && Number(proposedRent) !== Number(currentLease.monthlyRent ?? currentLease.monthly_rent)) {
+      if (proposedRent === undefined) {
+        return res.status(400).json({ error: 'Include the current lease rent when updating a lease.' });
+      }
+      if (Number(proposedRent) !== Number(currentLease.monthlyRent ?? currentLease.monthly_rent)) {
         return res.status(403).json({ error: 'Changing lease rent requires Admin approval. Submit a rent-change approval request first.' });
       }
       if (String(req.body.status || '').toLowerCase() === 'terminated') {
@@ -1588,7 +1591,10 @@ app.patch('/api/units/:id', requireRoles('Admin', 'Manager'), async (req, res) =
     if (req.auth.role === 'Manager') {
       const currentUnit = (await getUnits()).find((unit) => String(unit.id) === String(req.params.id));
       if (!currentUnit) return res.status(404).json({ error: 'Unit not found.' });
-      if (req.body.rent !== undefined && Number(req.body.rent) !== Number(currentUnit.rent)) {
+      if (req.body.rent === undefined) {
+        return res.status(400).json({ error: 'Include the current unit rent when updating a unit.' });
+      }
+      if (Number(req.body.rent) !== Number(currentUnit.rent)) {
         return res.status(403).json({ error: 'Changing unit rent requires Admin approval. Submit a rent-change approval request first.' });
       }
     }
