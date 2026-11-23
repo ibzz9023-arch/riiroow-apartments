@@ -157,13 +157,13 @@ export default function ApprovalRequests({ role, token, onShare }) {
                     <td>
                       <div>{item.reason}</div>
                       {item.details && Object.keys(item.details).length ? (
-                        <small>
+                        <div className="muted">
                           {Object.entries(item.details).map(([key, value]) => (
                             <div key={key}>
                               {key}: {value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
                             </div>
                           ))}
-                        </small>
+                        </div>
                       ) : null}
                     </td>
                     <td>{prettyStatus(item.status)}</td>
