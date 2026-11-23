@@ -17,6 +17,11 @@ import {
   reviewMoveOutRequest,
 } from './src/moveOutRequests.js';
 import { financialRouter } from './src/financialRoutes.js';
+import {
+  submitApprovalRequest,
+  listApprovalRequests,
+  reviewApprovalRequest,
+} from './src/approvalRequests.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -1217,6 +1222,56 @@ app.patch(
     }
   }
 );
+// Manager submits approval requests; Admin reviews them.
+app.post('/api/approval-requests', requireRoles('Manager'), async (req, res) => {
+  try {
+    const item = await submitApprovalRequest({
+      requesterId: req.auth.sub,
+      requestType: req.body?.requestType,
+      title: req.body?.title,
+      reason: req.body?.reason,
+      details: req.body?.details || {},
+    });
+    return res.status(201).json(item);
+  } catch (error) {
+    console.error('Submit approval request error:', error);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to submit the approval request.',
+    });
+  }
+});
+
+app.get('/api/approval-requests', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    const items = await listApprovalRequests({
+      requesterId: req.auth.role === 'Manager' ? req.auth.sub : null,
+    });
+    return res.json(items);
+  } catch (error) {
+    console.error('List approval requests error:', error);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to load approval requests.',
+    });
+  }
+});
+
+app.patch('/api/approval-requests/:id', requireRoles('Admin'), async (req, res) => {
+  try {
+    const item = await reviewApprovalRequest({
+      requestId: req.params.id,
+      action: req.body?.action,
+      reviewerId: req.auth.sub,
+      reviewReason: req.body?.reviewReason,
+    });
+    return res.json(item);
+  } catch (error) {
+    console.error('Review approval request error:', error);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to review the approval request.',
+    });
+  }
+});
+
 app.post('/api/manager/leases/:leaseId/tenant-pin', requireRoles('Admin', 'Manager'), generateTenantPin);
 
 app.post('/api/public/qr/:unitNumber/verify-pin', verifyTenantPin);
