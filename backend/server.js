@@ -1022,7 +1022,9 @@ app.patch('/api/leases/:id', requireRoles('Admin', 'Manager'), async (req, res) 
       if (Number(proposedRent) !== Number(currentLease.monthlyRent ?? currentLease.monthly_rent)) {
         return res.status(403).json({ error: 'Changing lease rent requires Admin approval. Submit a rent-change approval request first.' });
       }
-      if (['terminated', 'expired'].includes(String(req.body.status || '').trim().toLowerCase())) {
+      const currentStatus = String(currentLease.status || '').trim().toLowerCase();
+      const proposedStatus = String(req.body.status || '').trim().toLowerCase();
+      if (['terminated', 'expired'].includes(proposedStatus) && !['terminated', 'expired'].includes(currentStatus)) {
         return res.status(403).json({ error: 'Lease termination requires Admin approval. Submit a lease-termination approval request first.' });
       }
     }
