@@ -493,7 +493,7 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
   }
 });
 
-app.get('/api/users', requireRoles('Admin', 'Manager'), async (req, res) => {
+app.get('/api/users', requireRoles('Admin'), async (req, res) => {
   try {
     const users = await getUsers();
     res.json(users.map((user) => Object.fromEntries(
