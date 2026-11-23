@@ -4705,7 +4705,7 @@ const handleLogin = async (event) => {
                         className="small-btn"
                         disabled={depositLoading}
                       >
-                        Record Transaction
+                        {role === 'manager' && depositForm.type === 'refund' ? 'Submit refund request' : 'Record Transaction'}
                       </button>
                     </div>
                   </form>
