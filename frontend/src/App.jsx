@@ -4986,6 +4986,16 @@ const handleLogin = async (event) => {
       <button type="button" className="small-btn" onClick={() => setActiveTab('financial')}>Continue receipt recording</button>
     </div>
   ) : 'Reviewed'}
+  <button
+    type="button"
+    className="small-btn"
+    onClick={() => {
+      const tenant = tenants.find((item) => String(item.id) === String(notification.tenant_id));
+      shareViaWhatsApp(`Riiroow Apartments payment notification\nTenant: ${notification.tenant_name || tenant?.name || '—'}\nUnit: ${notification.unit_number ?? '—'}\nAmount: ${formatCurrency(notification.amount)}\nMethod: ${notification.payment_method || '—'}\nReference: ${notification.transaction_reference || '—'}\nStatus: ${status}\n\nThis is a payment notification and not proof of receipt.`, tenant?.phone);
+    }}
+  >
+    WhatsApp
+  </button>
   {busy ? <p>Saving review...</p> : null}
 </td>
                               </tr>
