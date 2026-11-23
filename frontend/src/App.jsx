@@ -8,7 +8,7 @@ const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
   if (reviewedMessage === null) return;
   const digits = String(phone || '').trim().startsWith('+')
-    ? String(phone).replace(/\\D/g, '')
+    ? String(phone).replace(/\D/g, '')
     : '';
   const recipient = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
   window.open(`${recipient}?text=${encodeURIComponent(reviewedMessage)}`, '_blank', 'noopener,noreferrer');
@@ -1295,6 +1295,33 @@ const printUnitQRCodes = async () => {
       return;
     }
 
+    if (depositForm.type === 'refund' && String(user?.role || '').toLowerCase() === 'manager') {
+      const lease = (dashboard?.leases || []).find((item) => String(item.id) === String(selectedDepositLeaseId));
+      const reason = window.prompt(`Explain why a ${formatCurrency(amount)} security-deposit refund should be issued for Unit ${lease?.unitNumber || '—'}:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the refund request.');
+        return;
+      }
+      setDepositLoading(true);
+      setError('');
+      setInfoMessage('');
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'security_deposit_refund',
+          title: `Security-deposit refund — Unit ${lease?.unitNumber || '—'}`,
+          reason: reason.trim(),
+          details: { leaseId: selectedDepositLeaseId, unitNumber: lease?.unitNumber || null, amount, transactionDate: depositForm.transactionDate, notes: depositForm.notes },
+        });
+        setInfoMessage('Security-deposit refund request submitted to Admin. No refund has been recorded.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the security-deposit refund request.');
+      } finally {
+        setDepositLoading(false);
+      }
+      return;
+    }
+
     setDepositLoading(true);
     setError('');
     setInfoMessage('');
@@ -1687,6 +1714,13 @@ const handleLogin = async (event) => {
     }
   };
 
+  const submitManagerApprovalRequest = async ({ requestType, title, reason, details }) => {
+    await requestJson('/api/approval-requests', {
+      method: 'POST',
+      body: { requestType, title, reason, details },
+    });
+  };
+
   const handleUnitSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -1705,6 +1739,23 @@ const handleLogin = async (event) => {
 
       if (!payload.unitNumber || !payload.rent) {
         throw new Error('Unit number and rent are required.');
+      }
+
+      if (editingUnitId && String(user?.role || '').toLowerCase() === 'manager') {
+        const existingUnit = (dashboard?.units || []).find((unit) => String(unit.id) === String(editingUnitId));
+        if (existingUnit && Number(existingUnit.rent) !== payload.rent) {
+          const reason = window.prompt(`Explain why Unit ${payload.unitNumber} rent should change from ${formatCurrency(existingUnit.rent)} to ${formatCurrency(payload.rent)}:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the rent-change request.');
+          await submitManagerApprovalRequest({
+            requestType: 'rent_change',
+            title: `Change rent for Unit ${payload.unitNumber}`,
+            reason: reason.trim(),
+            details: { target: 'unit', unitId: editingUnitId, unitNumber: payload.unitNumber, currentRent: existingUnit.rent, requestedRent: payload.rent },
+          });
+          setInfoMessage('Rent-change request submitted to Admin. The unit rent has not been changed.');
+          return;
+        }
       }
 
       if (editingUnitId) {
@@ -1825,6 +1876,23 @@ const handleLogin = async (event) => {
         notes: leaseForm.notes,
       };
 
+      if (editingLeaseId && String(user?.role || '').toLowerCase() === 'manager') {
+        const existingLease = (dashboard?.leases || []).find((lease) => String(lease.id) === String(editingLeaseId));
+        if (existingLease && Number(existingLease.monthlyRent) !== body.monthlyRent) {
+          const reason = window.prompt(`Explain why Unit ${body.unitNumber} monthly rent should change from ${formatCurrency(existingLease.monthlyRent)} to ${formatCurrency(body.monthlyRent)}:`);
+          if (reason === null) return;
+          if (reason.trim().length < 3) throw new Error('Enter a reason of at least 3 characters for the rent-change request.');
+          await submitManagerApprovalRequest({
+            requestType: 'rent_change',
+            title: `Change lease rent for Unit ${body.unitNumber}`,
+            reason: reason.trim(),
+            details: { target: 'lease', leaseId: editingLeaseId, unitNumber: body.unitNumber, currentRent: existingLease.monthlyRent, requestedRent: body.monthlyRent },
+          });
+          setInfoMessage('Rent-change request submitted to Admin. The lease rent has not been changed.');
+          return;
+        }
+      }
+
       if (editingLeaseId) {
         await requestJson(`/api/leases/${editingLeaseId}`, {
           method: 'PATCH',
@@ -1909,6 +1977,27 @@ const handleLogin = async (event) => {
   };
 
   const handleTerminateLease = async (lease) => {
+    if (String(user?.role || '').toLowerCase() === 'manager') {
+      const reason = window.prompt(`Explain why the lease for Unit ${lease.unitNumber} should be terminated:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the lease-termination request.');
+        return;
+      }
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'lease_termination',
+          title: `Terminate lease for Unit ${lease.unitNumber}`,
+          reason: reason.trim(),
+          details: { leaseId: lease.id, unitNumber: lease.unitNumber, tenantId: lease.tenantId, tenantName: lease.tenantName || '' },
+        });
+        setInfoMessage('Lease-termination request submitted to Admin. The lease remains active until Admin takes action.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the lease-termination request.');
+      }
+      return;
+    }
+
     const confirmed = window.confirm(
       `Terminate lease ${lease.id} for unit ${lease.unitNumber}?`
     );
@@ -2694,6 +2783,28 @@ const handleLogin = async (event) => {
   };
 
   const deleteTenant = async (tenantId) => {
+    if (String(user?.role || '').toLowerCase() === 'manager') {
+      const tenant = (dashboard?.tenants || []).find((item) => String(item.id) === String(tenantId));
+      if (!tenant) return;
+      const reason = window.prompt(`Explain why tenant ${tenant.name} (Unit ${tenant.unitNumber}) should be deleted:`);
+      if (reason === null) return;
+      if (reason.trim().length < 3) {
+        setError('Enter a reason of at least 3 characters for the tenant-deletion request.');
+        return;
+      }
+      try {
+        await submitManagerApprovalRequest({
+          requestType: 'tenant_deletion',
+          title: `Delete tenant ${tenant.name} — Unit ${tenant.unitNumber}`,
+          reason: reason.trim(),
+          details: { tenantId: tenant.id, tenantName: tenant.name, unitNumber: tenant.unitNumber },
+        });
+        setInfoMessage('Tenant-deletion request submitted to Admin. The tenant record has not been deleted.');
+      } catch (requestError) {
+        setError(requestError.message || 'Unable to submit the tenant-deletion request.');
+      }
+      return;
+    }
     if (!window.confirm('Delete this tenant?')) return;
     try {
       await requestJson(`/api/tenants/${tenantId}`, { method: 'DELETE' });
