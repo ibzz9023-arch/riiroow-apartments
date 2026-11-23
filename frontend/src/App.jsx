@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
 import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
+import {
+  DEFAULT_WHATSAPP_TEMPLATE,
+  WHATSAPP_TEMPLATE_STORAGE_KEY,
+  formatWhatsAppTemplate,
+} from './whatsappMessageTemplates.js';
 import QRCode from 'qrcode';
 
 
@@ -1003,15 +1008,43 @@ const [user, setUser] = useState(null);
 
       popup.document.open();
       popup.document.write(
-        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222}button{padding:10px 12px;border:1px solid #bbb;border-radius:7px;background:#f7f7f7;cursor:pointer}button:hover{background:#eaeaea}</style></head><body><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(requestLabel)}</p><button type="button" id="share-all">Share all via WhatsApp</button>
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance attachments</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222}button{padding:10px 12px;border:1px solid #bbb;border-radius:7px;background:#f7f7f7;cursor:pointer}button:hover{background:#eaeaea}</style></head><body><h1>Maintenance attachments</h1><p>Request: ${escapeHtml(requestLabel)}</p><section style="border:1px solid #ddd;border-radius:10px;padding:14px;margin:16px 0">
+  <label for="whatsapp-template" style="display:block;font-weight:700;margin-bottom:8px">Editable WhatsApp message template</label>
+  <textarea id="whatsapp-template" rows="7" style="width:100%;padding:10px;border:1px solid #bbb;border-radius:7px;font:inherit">${escapeHtml(DEFAULT_WHATSAPP_TEMPLATE)}</textarea>
+  <p style="color:#666;font-size:13px">Available placeholders: {request}, {attachment}, and {url}. Save your template in this browser to reuse it.</p>
+  <button type="button" id="save-whatsapp-template">Save template</button>
+</section>
+<button type="button" id="share-all">Share all via WhatsApp</button>
 <button type="button" id="email-all">Email all attachments</button>${cards}<p style="color:#666">Secure attachment links expire after 10 minutes. Recipients may need access before the links expire.</p><p id="share-status" role="status" aria-live="polite"></p></body></html>`
       );
       popup.document.close();
 
       const status = popup.document.getElementById('share-status');
+      const whatsappTemplateField = popup.document.getElementById('whatsapp-template');
       const setStatus = (message) => {
         if (status) status.textContent = message;
       };
+
+      try {
+        const savedTemplate = popup.localStorage.getItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
+        if (savedTemplate && whatsappTemplateField) whatsappTemplateField.value = savedTemplate;
+      } catch {
+        setStatus('Template storage is unavailable in this browser. You can still edit the message before sharing.');
+      }
+
+      popup.document.getElementById('save-whatsapp-template')?.addEventListener('click', () => {
+        const template = whatsappTemplateField?.value || '';
+        if (!template.trim()) {
+          setStatus('Enter a message template before saving.');
+          return;
+        }
+        try {
+          popup.localStorage.setItem(WHATSAPP_TEMPLATE_STORAGE_KEY, template);
+          setStatus('WhatsApp message template saved in this browser.');
+        } catch {
+          setStatus('Unable to save the template in this browser. Your current edits can still be shared.');
+        }
+      });
 
       const copyText = async (text) => {
         try {
@@ -1037,7 +1070,12 @@ const [user, setUser] = useState(null);
           `${file.originalName || file.fileType || 'Attachment'}: ${file.url || ''}`
         ).join('\n');
 
-        const message = `Maintenance request: ${requestLabel}\n\nAttachments:\n${links}\n\nNote: secure links expire after 10 minutes.`;
+        const attachmentNames = files.map((file) => file.originalName || file.fileType || 'Attachment').join(', ');
+        const message = formatWhatsAppTemplate(whatsappTemplateField?.value, {
+          request: requestLabel,
+          attachment: attachmentNames,
+          url: links,
+        });
         popup.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
       });
 
@@ -1046,7 +1084,11 @@ const [user, setUser] = useState(null);
           const url = button.getAttribute('data-url') || '';
           const name = button.getAttribute('data-name') || 'Attachment';
           const action = button.getAttribute('data-action');
-          const message = `Maintenance request: ${requestLabel}\nAttachment: ${name}\nSecure link (expires in 10 minutes): ${url}`;
+          const message = formatWhatsAppTemplate(whatsappTemplateField?.value, {
+            request: requestLabel,
+            attachment: name,
+            url,
+          });
 
           if (!url) {
             setStatus('No attachment link is available.');
