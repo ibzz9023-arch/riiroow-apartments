@@ -3332,7 +3332,7 @@ const handleLogin = async (event) => {
     ['reports', 'Reports'],
   ].filter(([key]) => {
     if (role === 'admin') return true;
-    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'paymentNotifications', 'moveOutRequests', 'maintenance'].includes(key);
+    if (role === 'manager') return ['overview', 'units', 'tenants', 'leases', 'deposits', 'payments', 'maintenance'].includes(key);
     if (role === 'accountant') return ['overview', 'payments', 'financial', 'leases', 'deposits', 'reports'].includes(key);
     if (role === 'maintenance') return ['overview', 'units', 'maintenance'].includes(key);
     return false;
