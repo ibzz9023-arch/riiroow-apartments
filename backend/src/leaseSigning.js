@@ -95,6 +95,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     const chunks = [];
     let pageNumber = 1;
     const drawPageNumber = () => {
+      const previousX = doc.x;
       const previousY = doc.y;
       doc.save();
       doc.font('Helvetica').fontSize(8).fillColor('#777777')
@@ -104,6 +105,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
           lineBreak: false,
         });
       doc.restore();
+      doc.x = previousX;
       doc.y = previousY;
     };
     doc.on('pageAdded', () => {
