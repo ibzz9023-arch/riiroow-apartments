@@ -282,6 +282,11 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
             </div>
             {displayLease.notes ? <p className="muted">{displayLease.notes}</p> : null}
           </div>
+          {isTenantFlow ? (
+            <div className="form-actions" style={{ marginBottom: '10px' }}>
+              <button className="small-btn" type="button" onClick={refreshSigningStatus} disabled={loading}>Refresh lease details</button>
+            </div>
+          ) : null}
           <div className="panel" style={{ background: 'var(--panel-alt)', marginBottom: '12px' }}>
             <strong>{signerType === 'tenant' ? 'Step 1 — Tenant signature' : 'Step 2 — Manager signature'}</strong>
             <p className="muted" style={{ marginBottom: 0 }}>
