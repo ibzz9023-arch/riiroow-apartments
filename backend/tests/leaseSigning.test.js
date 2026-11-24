@@ -51,6 +51,18 @@ test('decodeSignaturePng rejects non-PNG and malformed data URLs', () => {
   assert.throws(() => decodeSignaturePng('not-an-image'), /PNG/);
 });
 
+test('decodeSignaturePng rejects corrupted PNG chunk checksums', () => {
+  const corrupted = Buffer.from(minimalPng);
+  corrupted[corrupted.length - 1] ^= 0xff;
+  const input = `data:image/png;base64,${corrupted.toString('base64')}`;
+  assert.throws(() => decodeSignaturePng(input), /invalid or exceeds 2 MB/);
+});
+
+test('decodeSignaturePng rejects trailing data after the PNG end marker', () => {
+  const input = `data:image/png;base64,${Buffer.concat([minimalPng, Buffer.from([0])]).toString('base64')}`;
+  assert.throws(() => decodeSignaturePng(input), /invalid or exceeds 2 MB/);
+});
+
 test('decodeSignaturePng enforces the signature size limit', () => {
   const oversized = Buffer.alloc(2 * 1024 * 1024 + 1);
   const input = `data:image/png;base64,${oversized.toString('base64')}`;
