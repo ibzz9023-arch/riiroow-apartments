@@ -90,7 +90,7 @@ const addField = (doc, label, value) => {
 
 export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
   new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, info: {
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, bufferPages: true, info: {
       Title: 'Riiroow Signed Lease Agreement',
       Author: 'Riiroow Apartments',
       Subject: `Signed lease ${snapshot.id}`,
@@ -147,11 +147,20 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
     doc.text('Each signing date above is recorded independently by the Riiroow server and displayed in East Africa Time (EAT).');
+    doc.text(`Document reference: RII-LEASE-${sessionId}`);
     if (doc.y > 560) doc.addPage();
     doc.moveDown(1.5);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
     doc.font('Helvetica').fontSize(8).fillColor('#555555').text('Scan this QR code to view this signed lease and other documents attached to this lease.');
     doc.moveDown(0.5);
     doc.image(qrBuffer, { width: 112, height: 112, align: 'center' });
+
+    // Add consistent page numbering after all content has been laid out.
+    const pageRange = doc.bufferedPageRange();
+    for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex += 1) {
+      doc.switchToPage(pageIndex);
+      doc.font('Helvetica').fontSize(8).fillColor('#777777')
+        .text(`Page ${pageIndex + 1} of ${pageRange.count}`, 54, 775, { width: 487, align: 'right', lineBreak: false });
+    }
     doc.end();
   });
