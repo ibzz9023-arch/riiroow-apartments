@@ -30,9 +30,9 @@ DECLARE
     v_details JSONB;
     v_target TEXT;
     v_target_id UUID;
-    v_current_rent NUMERIC(12,2);
-    v_requested_rent NUMERIC(12,2);
-    v_amount NUMERIC(12,2);
+    v_current_rent NUMERIC;
+    v_requested_rent NUMERIC;
+    v_amount NUMERIC;
     v_status TEXT;
     v_rows INTEGER;
     v_today DATE := (NOW() AT TIME ZONE 'Africa/Mogadishu')::date;
@@ -132,6 +132,7 @@ BEGIN
         IF v_current_rent IS NULL OR v_requested_rent IS NULL
            OR v_current_rent < 0 OR v_requested_rent <= 0
            OR v_requested_rent > 1000000000
+           OR v_current_rent <> ROUND(v_current_rent, 2)
            OR v_requested_rent <> ROUND(v_requested_rent, 2) THEN
             RAISE EXCEPTION 'The rent-change request must include valid currentRent and requestedRent amounts.'
                 USING ERRCODE = '22023';
