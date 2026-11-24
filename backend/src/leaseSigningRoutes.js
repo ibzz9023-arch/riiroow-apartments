@@ -284,7 +284,7 @@ const getTenantSigningLease = async (req) => {
   return current;
 };
 
-leaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSession, async (req, res) => {
+tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSession, async (req, res) => {
   try {
     const current = await getTenantSigningLease(req);
     if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
@@ -314,7 +314,7 @@ leaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSession, asy
   }
 });
 
-leaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
+tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
   try {
     const current = await getTenantSigningLease(req);
     if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
