@@ -87,7 +87,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
 app.use('/api/leases', leaseSigningRouter);
 app.use('/api/public/qr', tenantLeaseSigningRouter);
 
