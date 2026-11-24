@@ -137,6 +137,7 @@ const sessionResponse = (session) => ({
   managerName: session.manager_name,
   managerSignedAt: session.manager_signed_at,
   documentReady: session.status === 'signed',
+  canRegeneratePdf: Boolean(session.tenant_signature_path && session.manager_signature_path),
 });
 
 // Keep the private signature originals and their database paths after finalization.
