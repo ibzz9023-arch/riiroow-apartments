@@ -10,6 +10,7 @@ import {
   leaseDocumentTokenMatchesHash,
 } from './leaseDocumentTokens.js';
 import { createSignedLeasePdf, decodeSignaturePng, hashLeaseSnapshot } from './leaseSigning.js';
+import { requireTenantQrSession } from './tenantQrAuth.js';
 
 export const leaseSigningRouter = Router();
 const BUCKET = 'lease-documents';
@@ -242,6 +243,98 @@ const finalizeSession = async (session, appOrigin) => {
   return sessionResponse(updated);
 };
 
+
+const getTenantSigningLease = async (req) => {
+  const leaseId = req.tenantQrAccess?.leaseId;
+  if (!leaseId) return null;
+  const current = await getLeaseAndTenant(leaseId);
+  if (!current) return null;
+  const unitNumber = Number(current.lease.unit_number ?? current.lease.unitNumber);
+  if (unitNumber !== Number(req.params.unitNumber)) return null;
+  return current;
+};
+
+leaseSigningRouter.get('/public/qr/:unitNumber/lease-signing', requireTenantQrSession, async (req, res) => {
+  try {
+    const current = await getTenantSigningLease(req);
+    if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
+    const { data: session, error } = await supabaseServiceRole
+      .from('lease_signing_sessions')
+      .select('*')
+      .eq('lease_id', current.lease.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return res.json({
+      lease: {
+        id: current.lease.id,
+        tenantName: current.tenant.name,
+        unitNumber: current.lease.unit_number ?? current.lease.unitNumber,
+        startDate: current.lease.start_date,
+        endDate: current.lease.end_date,
+        monthlyRent: current.lease.monthly_rent,
+        securityDeposit: current.lease.security_deposit,
+        notes: current.lease.notes || '',
+      },
+      session: session ? sessionResponse(session) : null,
+    });
+  } catch (error) {
+    return sendError(res, error, 'Unable to load the tenant lease for signing.');
+  }
+});
+
+leaseSigningRouter.post('/public/qr/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
+  try {
+    const current = await getTenantSigningLease(req);
+    if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
+    const session = await getSession(current.lease.id, req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Signing session not found.' });
+    if (session.status !== 'awaiting_tenant' || session.tenant_signed_at) {
+      return res.status(409).json({ error: 'This lease is not awaiting a tenant signature.' });
+    }
+    if (req.body?.signerType !== 'tenant' || req.body?.confirmed !== true) {
+      return res.status(400).json({ error: 'The tenant must confirm their own handwritten signature.' });
+    }
+    if (current.leaseHash !== session.lease_hash) {
+      return res.status(409).json({ error: 'Lease details changed. Ask management to prepare a new signing version.' });
+    }
+    const signature = decodeSignaturePng(req.body?.signatureDataUrl);
+    const storagePath = `${current.lease.id}/signatures/${session.id}-tenant.png`;
+    const { error: uploadError } = await supabaseServiceRole.storage.from(BUCKET).upload(storagePath, signature, {
+      contentType: 'image/png',
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const signedAt = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabaseServiceRole
+      .from('lease_signing_sessions')
+      .update({
+        tenant_signature_path: storagePath,
+        tenant_signed_at: signedAt,
+        tenant_captured_by: null,
+        status: 'awaiting_manager',
+        updated_at: signedAt,
+      })
+      .eq('id', session.id)
+      .eq('status', 'awaiting_tenant')
+      .is('tenant_signed_at', null)
+      .select('*')
+      .maybeSingle();
+    if (updateError) {
+      await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
+      throw updateError;
+    }
+    if (!updated) {
+      await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
+      return res.status(409).json({ error: 'The tenant signature was already submitted.' });
+    }
+    return res.json({ session: sessionResponse(updated) });
+  } catch (error) {
+    return sendError(res, error, 'Unable to save the tenant signature.');
+  }
+});
+
 leaseSigningRouter.get('/:id/signing', managerOnly, async (req, res) => {
   try {
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
@@ -308,8 +401,8 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
       return res.status(409).json({ error: 'Lease details changed after signing began. Start a new signing session so both parties sign the same lease version.' });
     }
     const signerType = String(req.body?.signerType || '');
-    if (!['tenant', 'manager'].includes(signerType)) {
-      return res.status(400).json({ error: 'Choose a valid signer.' });
+    if (signerType !== 'manager') {
+      return res.status(403).json({ error: 'Tenant signatures must be submitted from the tenant PIN-verified QR session.' });
     }
     if (signerType === 'tenant' && session.tenant_signed_at) {
       return res.status(409).json({ error: 'The tenant has already signed this lease.' });
