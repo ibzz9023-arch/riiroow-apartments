@@ -218,7 +218,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
           <h4>Smart Lease Signing</h4>
           <p className="muted">Handwrite directly on the screen. The server records each signer’s date and time independently.</p>
         </div>
-        <button className="small-btn" type="button" onClick={() => setOpen(false)} disabled={saving}>Close</button>
+        <button className="small-btn" type="button" onClick={() => { clearSignature(); setConfirmed(false); setOpen(false); }} disabled={saving}>Close</button>
       </div>
 
       {loading ? <p role="status">Preparing signing session…</p> : null}
