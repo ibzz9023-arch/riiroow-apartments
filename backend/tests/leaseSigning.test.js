@@ -32,3 +32,10 @@ test('lease snapshot hashes are deterministic and change with lease terms', () =
   assert.equal(hashLeaseSnapshot(first), hashLeaseSnapshot(same));
   assert.notEqual(hashLeaseSnapshot(first), hashLeaseSnapshot(changed));
 });
+
+test('decodeSignaturePng rejects excessive image dimensions', () => {
+  const huge = Buffer.from(minimalPng);
+  huge.writeUInt32BE(5000, 16);
+  const input = `data:image/png;base64,${huge.toString('base64')}`;
+  assert.throws(() => decodeSignaturePng(input), /invalid or exceeds 2 MB/);
+});
