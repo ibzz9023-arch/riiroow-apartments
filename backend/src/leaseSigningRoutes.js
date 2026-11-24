@@ -370,7 +370,7 @@ leaseSigningRouter.post('/:id/signing/:sessionId/finalize', managerOnly, async (
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
     const session = await getSession(req.params.id, req.params.sessionId);
     if (!session) return res.status(404).json({ error: 'Signing session not found.' });
-    return res.json({ session: await finalizeSession(session) });
+    return res.json({ session: await finalizeSession(session, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
   } catch (error) {
     return sendError(res, error, 'Unable to generate or upload the signed lease PDF.');
   }
