@@ -76,7 +76,7 @@ export const listApprovalRequests = async ({ requesterId = null } = {}) => {
   return (data || []).map(toPublicRequest);
 };
 
-export const reviewApprovalRequest = async ({ requestId, action, reviewerId, reviewReason }) => {
+export const reviewApprovalRequest = async ({ requestId, action, reviewerId, reviewReason, onApprove }) => {
   if (!['approve', 'reject'].includes(action)) {
     throw Object.assign(new Error('Choose approve or reject.'), { statusCode: 400 });
   }
@@ -88,7 +88,7 @@ export const reviewApprovalRequest = async ({ requestId, action, reviewerId, rev
   const client = requireDatabase();
   const { data: current, error: readError } = await client
     .from('approval_requests')
-    .select('id, status, requester_id')
+    .select('id, status, requester_id, request_type, details, reason')
     .eq('id', requestId)
     .maybeSingle();
   if (readError) throw readError;
@@ -98,6 +98,16 @@ export const reviewApprovalRequest = async ({ requestId, action, reviewerId, rev
   }
   if (current.status !== 'pending') {
     throw Object.assign(new Error('This request has already been reviewed.'), { statusCode: 409 });
+  }
+
+  // Complete the requested business action before recording approval. If the
+  // operation fails, the request stays pending instead of showing a false approval.
+  if (action === 'approve' && typeof onApprove === 'function') {
+    await onApprove({
+      requestType: current.request_type,
+      details: current.details || {},
+      reason: current.reason || '',
+    });
   }
 
   const { data, error } = await client
