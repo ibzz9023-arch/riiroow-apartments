@@ -275,7 +275,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
             ) : null}
             {documents.some((document) => document.documentType !== 'signed_lease') ? (
               <>
-                <h3>Other lease documents</h3>
+                <h3>Manually uploaded documents</h3>
                 {documents.filter((document) => document.documentType !== 'signed_lease').map((document) => (
                   <section className="panel" key={document.id}>
                     <strong>{document.originalName}</strong>
