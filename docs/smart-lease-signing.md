@@ -23,9 +23,8 @@ These migration files are committed for review only. They are not applied to the
 ## Runtime configuration
 
 - The `lease-documents` Storage bucket must remain private.
-- The existing lease-document token secret must remain unchanged for already printed QR codes. If the application uses `SESSION_SECRET` as its fallback, keep that secret stable.
-- `PUBLIC_APP_URL` may be set to the public Railway application origin. If omitted, the API uses the request origin when generating the QR embedded in the PDF.
-- Backend installation uses the repository's existing `npm --prefix backend install` build step; PDFKit and QRCode are added as backend dependencies.
+- Existing lease-document QR tokens and their secret configuration are unchanged. The feature reuses the QR code already printed at the end of the lease; it does not generate a second QR code.
+- Backend installation uses the repository's existing `npm --prefix backend install` build step; PDFKit is added as a backend dependency.
 
 ## Review checklist
 
