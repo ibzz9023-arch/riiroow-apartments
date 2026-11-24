@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 const canvasWidth = 1400;
 const canvasHeight = 420;
 
-export default function LeaseSigning({ lease, requestJson, onCompleted }) {
+export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAccessToken = '', unitNumber = '' }) {
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(null);
+  const [tenantLease, setTenantLease] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -16,7 +17,9 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
   const activeStrokeRef = useRef(null);
   const drawingRef = useRef(false);
 
-  const signerType = session?.tenantSignedAt ? 'manager' : 'tenant';
+  const isTenantFlow = Boolean(tenantAccessToken);
+  const displayLease = lease || tenantLease || {};
+  const signerType = isTenantFlow ? 'tenant' : 'manager';
   const signerName = signerType === 'tenant' ? session?.tenantName : 'Authorized manager';
 
   useEffect(() => {
@@ -24,12 +27,19 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
     let active = true;
     setLoading(true);
     setError('');
-    requestJson(`/api/leases/${encodeURIComponent(lease.id)}/signing/start`, {
-      method: 'POST',
-      body: {},
+    const endpoint = isTenantFlow
+      ? `/api/public/qr/${encodeURIComponent(unitNumber)}/lease-signing`
+      : `/api/leases/${encodeURIComponent(lease.id)}/signing/start`;
+    requestJson(endpoint, {
+      method: isTenantFlow ? 'GET' : 'POST',
+      body: isTenantFlow ? undefined : {},
+      headers: isTenantFlow ? { Authorization: `Bearer ${tenantAccessToken}` } : {},
     })
       .then((data) => {
-        if (active) setSession(data.session || null);
+        if (active) {
+          setSession(data.session || null);
+          if (data.lease) setTenantLease(data.lease);
+        }
       })
       .catch((loadError) => {
         if (active) setError(loadError.message || 'Unable to start lease signing.');
@@ -38,7 +48,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [open, lease?.id]);
+  }, [open, lease?.id, tenantAccessToken, unitNumber]);
 
   const pointFromEvent = (event) => {
     const canvas = canvasRef.current;
@@ -126,17 +136,14 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
     setError('');
     try {
       const signatureDataUrl = canvasRef.current.toDataURL('image/png');
-      const data = await requestJson(
-        `/api/leases/${encodeURIComponent(lease.id)}/signing/${encodeURIComponent(session.id)}/signature`,
-        {
-          method: 'POST',
-          body: {
-            signerType,
-            signatureDataUrl,
-            confirmed: true,
-          },
-        }
-      );
+      const signatureEndpoint = isTenantFlow
+        ? `/api/public/qr/${encodeURIComponent(unitNumber)}/lease-signing/${encodeURIComponent(session.id)}/signature`
+        : `/api/leases/${encodeURIComponent(lease.id)}/signing/${encodeURIComponent(session.id)}/signature`;
+      const data = await requestJson(signatureEndpoint, {
+        method: 'POST',
+        headers: isTenantFlow ? { Authorization: `Bearer ${tenantAccessToken}` } : {},
+        body: { signerType, signatureDataUrl, confirmed: true },
+      });
       setSession(data.session || null);
       clearSignature();
       setConfirmed(false);
@@ -156,7 +163,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
     setError('');
     try {
       const data = await requestJson(
-        `/api/leases/${encodeURIComponent(lease.id)}/signing/${encodeURIComponent(session.id)}/finalize`,
+        `/api/leases/${encodeURIComponent(displayLease.id)}/signing/${encodeURIComponent(session.id)}/finalize`,
         { method: 'POST', body: {} }
       );
       setSession(data.session || null);
@@ -174,10 +181,10 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
         <div className="panel-header">
           <div>
             <h4>Smart Lease Signing</h4>
-            <p className="muted">Tenant and manager sign separately on the iPad using Apple Pencil or finger.</p>
+            <p className="muted">Tenant signs through the PIN-verified unit QR portal; management signs separately using the manager account.</p>
           </div>
           <button className="primary-btn" type="button" onClick={() => setOpen(true)}>
-            Start / continue signing
+            Continue manager signing
           </button>
         </div>
       </div>
@@ -206,7 +213,19 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
         </div>
       ) : null}
 
-      {!loading && session?.status === 'document_pending' ? (
+      {!loading && !session && isTenantFlow ? <p role="status">Management has not prepared this lease for signing yet. Please contact the property manager.</p> : null}
+      {!loading && isTenantFlow && session?.status === 'awaiting_manager' ? (
+        <div role="status" className="empty-state">
+          <h4>Tenant signature received</h4>
+          <p>Your handwritten signature has been securely recorded. The manager must now sign to complete the lease.</p>
+          <p className="muted">Tenant signed: {session.tenantSignedAt ? new Date(session.tenantSignedAt).toLocaleString() : '—'}</p>
+        </div>
+      ) : null}
+      {!loading && !isTenantFlow && session?.status === 'awaiting_tenant' ? (
+        <p role="status">Waiting for the tenant to review and sign using their PIN-verified unit QR portal.</p>
+      ) : null}
+
+      {!loading && session?.status === 'document_pending' && !isTenantFlow ? (
         <div>
           <p>Both signatures are saved. The final PDF still needs to be generated or uploaded.</p>
           <div className="form-actions">
@@ -217,26 +236,26 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
         </div>
       ) : null}
 
-      {!loading && session && ['awaiting_tenant', 'awaiting_manager'].includes(session.status) ? (
+      {!loading && session && ((isTenantFlow && session.status === 'awaiting_tenant') || (!isTenantFlow && session.status === 'awaiting_manager')) ? (
         <div>
           <div className="panel" style={{ marginBottom: '12px' }}>
             <strong>Review lease before signing</strong>
             <div className="form-grid" style={{ marginTop: '10px' }}>
-              <div><span className="muted">Tenant</span><p>{lease.tenantName || lease.tenant_name || session.tenantName || '—'}</p></div>
-              <div><span className="muted">Unit</span><p>{lease.unitNumber ?? lease.unit_number ?? '—'}</p></div>
-              <div><span className="muted">Lease starts</span><p>{lease.startDate || lease.start_date || '—'}</p></div>
-              <div><span className="muted">Lease ends</span><p>{lease.endDate || lease.end_date || '—'}</p></div>
-              <div><span className="muted">Monthly rent</span><p>{lease.monthlyRent ?? lease.monthly_rent ?? '—'}</p></div>
-              <div><span className="muted">Security deposit</span><p>{lease.securityDeposit ?? lease.security_deposit ?? '—'}</p></div>
+              <div><span className="muted">Tenant</span><p>{displayLease.tenantName || displayLease.tenant_name || session.tenantName || '—'}</p></div>
+              <div><span className="muted">Unit</span><p>{displayLease.unitNumber ?? displayLease.unit_number ?? '—'}</p></div>
+              <div><span className="muted">Lease starts</span><p>{displayLease.startDate || displayLease.start_date || '—'}</p></div>
+              <div><span className="muted">Lease ends</span><p>{displayLease.endDate || displayLease.end_date || '—'}</p></div>
+              <div><span className="muted">Monthly rent</span><p>{displayLease.monthlyRent ?? displayLease.monthly_rent ?? '—'}</p></div>
+              <div><span className="muted">Security deposit</span><p>{displayLease.securityDeposit ?? displayLease.security_deposit ?? '—'}</p></div>
             </div>
-            {lease.notes ? <p className="muted">{lease.notes}</p> : null}
+            {displayLease.notes ? <p className="muted">{displayLease.notes}</p> : null}
           </div>
           <div className="panel" style={{ background: 'var(--panel-alt)', marginBottom: '12px' }}>
             <strong>{signerType === 'tenant' ? 'Step 1 — Tenant signature' : 'Step 2 — Manager signature'}</strong>
             <p className="muted" style={{ marginBottom: 0 }}>
               {signerType === 'tenant'
                 ? `Tenant signing: ${signerName}. Hand the iPad to the tenant to sign.`
-                : 'Tenant signature saved. Hand the iPad to the authorized manager to sign.'}
+                : 'Tenant signature saved. The authorized manager can now sign from the management account.'}
             </p>
             {session.tenantSignedAt ? <p className="muted">Tenant signed: {new Date(session.tenantSignedAt).toLocaleString()}</p> : null}
           </div>
