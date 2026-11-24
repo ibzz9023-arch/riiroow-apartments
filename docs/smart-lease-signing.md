@@ -7,7 +7,7 @@
 3. The tenant reviews the lease terms and writes a fresh handwritten signature using a finger, stylus, or mouse in the on-screen signing area. The API accepts the signature only from that lease's active PIN-verified tenant QR session. Uploading a signature image and reusing a previously stored signature are not supported.
 4. After the tenant signature is saved, the manager refreshes signing status and signs from the authenticated manager account.
 5. The API generates an A4 PDF, records its SHA-256 digest, and stores it in the existing private `lease-documents` bucket and `lease_documents` table as `document_type = 'signed_lease'`.
-6. The signed PDF includes each signer's independent server timestamp and the existing lease-document QR link. The tenant QR archive lists the generated signed lease separately from manually uploaded supporting documents. The drawn or extracted signature PNG is a temporary private-storage artifact used while the PDF is generated; after the signed PDF is safely archived, that PNG is deleted. When the photo method is used, the original source photograph is retained in the private bucket for manager review through a short-lived signed URL. The signing audit event records hashes for both source and extracted images. This establishes that the extracted image came from the uploaded photo, but it does not verify the person's identity or prove who physically wrote the signature. The signed PDF remains the retained signature record.
+6. The signed PDF includes each signer's independent server timestamp and the existing lease-document QR link. The tenant QR archive lists the generated signed lease separately from manually uploaded supporting documents. Freshly drawn signature PNGs are temporary private-storage artifacts used only while the PDF is generated; after the signed PDF is safely archived, those PNGs are deleted. The signed PDF is the retained signature record.
 
 The same QR link continues to resolve to the current document list, so later manual uploads remain visible without reprinting the QR. The manager's lease Documents panel also provides Share QR / link, Copy link, and Download QR controls for the unit's PIN-protected tenant portal.
 
@@ -19,7 +19,7 @@ Apply migrations in order:
 2. `backend/migrations/202611240001_smart_lease_signing.sql` — adds document classification, signing sessions, and signing audit events.
 The historical `202611240002_tenant_signature_photo_evidence.sql` migration belongs to the optional photo-upload experiment and is not required for manual-only signing. Do not apply it as part of this feature. If it was applied in another environment, its nullable column is left untouched for data preservation; the application no longer reads or writes it.
 
-The signing migration is committed for review only. Do not apply migrations to production as part of this change.
+The core signing migration is already part of the repository. This change does not add, apply, or alter production database migrations.
 
 ## Runtime configuration
 
