@@ -75,7 +75,7 @@ export const hashLeaseSnapshot = (snapshot) =>
 const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'long',
   timeStyle: 'short',
-  timeZone: 'UTC',
+  timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
 const addField = (doc, label, value) => {
@@ -133,7 +133,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.image(tenantSignature, leftX, signatureY + 20, { fit: [signatureWidth, 82], align: 'center', valign: 'center' });
     doc.image(managerSignature, rightX, signatureY + 20, { fit: [signatureWidth, 82], align: 'center', valign: 'center' });
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(tenantName, leftX, signatureY + 112, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(tenantSignedAt)} UTC`, leftX, signatureY + 128, { width: signatureWidth });
+    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(tenantSignedAt)} EAT`, leftX, signatureY + 128, { width: signatureWidth });
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(managerName, rightX, signatureY + 112, { width: signatureWidth });
     doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(managerSignedAt)} UTC`, rightX, signatureY + 128, { width: signatureWidth });
 
@@ -142,7 +142,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.moveDown(2);
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
-    doc.text('Each signing date above is recorded independently by the Riiroow server (UTC).');
+    doc.text('Each signing date above is recorded independently by the Riiroow server and displayed in East Africa Time (EAT).');
     if (doc.y > 560) doc.addPage();
     doc.moveDown(1.5);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
