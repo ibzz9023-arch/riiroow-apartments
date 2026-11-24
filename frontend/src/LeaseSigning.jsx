@@ -219,6 +219,18 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
 
       {!loading && session && ['awaiting_tenant', 'awaiting_manager'].includes(session.status) ? (
         <div>
+          <div className="panel" style={{ marginBottom: '12px' }}>
+            <strong>Review lease before signing</strong>
+            <div className="form-grid" style={{ marginTop: '10px' }}>
+              <div><span className="muted">Tenant</span><p>{lease.tenantName || lease.tenant_name || session.tenantName || '—'}</p></div>
+              <div><span className="muted">Unit</span><p>{lease.unitNumber ?? lease.unit_number ?? '—'}</p></div>
+              <div><span className="muted">Lease starts</span><p>{lease.startDate || lease.start_date || '—'}</p></div>
+              <div><span className="muted">Lease ends</span><p>{lease.endDate || lease.end_date || '—'}</p></div>
+              <div><span className="muted">Monthly rent</span><p>{lease.monthlyRent ?? lease.monthly_rent ?? '—'}</p></div>
+              <div><span className="muted">Security deposit</span><p>{lease.securityDeposit ?? lease.security_deposit ?? '—'}</p></div>
+            </div>
+            {lease.notes ? <p className="muted">{lease.notes}</p> : null}
+          </div>
           <div className="panel" style={{ background: 'var(--panel-alt)', marginBottom: '12px' }}>
             <strong>{signerType === 'tenant' ? 'Step 1 — Tenant signature' : 'Step 2 — Manager signature'}</strong>
             <p className="muted" style={{ marginBottom: 0 }}>
