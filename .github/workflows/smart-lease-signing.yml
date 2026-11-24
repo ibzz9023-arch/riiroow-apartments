@@ -6,6 +6,7 @@ on:
       - feature/smart-lease-signing
   pull_request:
     branches:
+      - main
       - deploy/security-deposits
     paths:
       - "backend/**"
