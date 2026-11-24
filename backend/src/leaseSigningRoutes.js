@@ -188,7 +188,7 @@ const finalizeSession = async (session, appOrigin) => {
     }
   }
   const documentToken = await getOrCreateDocumentToken(session.lease_id, session.manager_signed_by);
-  const publicDocumentUrl = `${String(appOrigin || '').replace(/\\/$/, '')}/lease-documents/${documentToken}`;
+  const publicDocumentUrl = `${String(appOrigin || '').replace(/\/$/, '')}/lease-documents/${documentToken}`;
   const qrBuffer = await QRCode.toBuffer(publicDocumentUrl, {
     type: 'png',
     width: 190,
