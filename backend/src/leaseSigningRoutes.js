@@ -214,12 +214,19 @@ const finalizeSession = async (session, appOrigin) => {
   const storagePath = `${session.lease_id}/signed/${session.id}.pdf`;
   const { error: uploadError } = await bucket.upload(storagePath, pdf, {
     contentType: 'application/pdf',
-    upsert: true,
+    upsert: false,
   });
-  if (uploadError) throw uploadError;
+  let finalPdf = pdf;
+  if (uploadError) {
+    // A prior attempt may have uploaded the immutable PDF before its database
+    // record was committed. Reuse those exact bytes instead of overwriting them.
+    const { data: existingPdf, error: existingPdfError } = await bucket.download(storagePath);
+    if (existingPdfError || !existingPdf) throw uploadError;
+    finalPdf = Buffer.from(await existingPdf.arrayBuffer());
+  }
 
   let documentId = session.final_document_id || crypto.randomUUID();
-  const documentHash = crypto.createHash('sha256').update(pdf).digest('hex');
+  const documentHash = crypto.createHash('sha256').update(finalPdf).digest('hex');
   if (!session.final_document_id) {
     const { data: existingDocument, error: existingDocumentError } = await supabaseServiceRole
       .from('lease_documents')
@@ -237,7 +244,7 @@ const finalizeSession = async (session, appOrigin) => {
         original_name: 'Signed_Lease_Agreement.pdf',
         storage_path: storagePath,
         mime_type: 'application/pdf',
-        file_size: pdf.length,
+        file_size: finalPdf.length,
         document_type: 'signed_lease',
         created_by: session.manager_signed_by,
       }]);
@@ -261,7 +268,7 @@ const finalizeSession = async (session, appOrigin) => {
     sessionId: session.id,
     eventType: 'signed_pdf_generated',
     actorType: 'system',
-    metadata: { documentId, sha256: documentHash, fileSize: pdf.length },
+    metadata: { documentId, sha256: documentHash, fileSize: finalPdf.length },
   });
   return sessionResponse(updated);
 };
