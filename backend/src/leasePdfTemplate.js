@@ -1,4 +1,11 @@
 import PDFDocument from 'pdfkit';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+let defaultLogoBuffer = null;
+try { defaultLogoBuffer = readFileSync(path.resolve(moduleDirectory, '../../frontend/public/riiroow-logo.png')); } catch { /* optional brand asset */ }
 
 const PAGE = { width: 595.28, height: 841.89, left: 51, right: 51 };
 const CONTENT_WIDTH = PAGE.width - PAGE.left - PAGE.right;
@@ -101,8 +108,9 @@ export const createLeasePdf = ({
   doc.on('error', reject);
   doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-  if (logoBuffer) {
-    try { doc.image(logoBuffer, PAGE.width / 2 - 62, 34, { fit: [124, 52], align: 'center', valign: 'center' }); } catch { /* optional brand asset */ }
+  const brandLogo = logoBuffer || defaultLogoBuffer;
+  if (brandLogo) {
+    try { doc.image(brandLogo, PAGE.width / 2 - 62, 34, { fit: [124, 52], align: 'center', valign: 'center' }); } catch { /* optional brand asset */ }
   }
   doc.font('Helvetica-Bold').fontSize(18).fillColor(COLORS.ink)
     .text('RIIROOW APARTMENT', PAGE.left, logoBuffer ? 91 : 43, { width: CONTENT_WIDTH, align: 'center' });
