@@ -186,6 +186,7 @@ class AppErrorBoundary extends React.Component {
 
 function LeaseDocumentsPublicPage({ accessToken }) {
   const [documents, setDocuments] = useState([]);
+  const [unitNumber, setUnitNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -208,6 +209,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
       .then((data) => {
         if (!active) return;
         setDocuments(Array.isArray(data.documents) ? data.documents : []);
+        setUnitNumber(data.unitNumber ? String(data.unitNumber) : '');
         setError('');
       })
       .catch((fetchError) => {
@@ -289,6 +291,16 @@ function LeaseDocumentsPublicPage({ accessToken }) {
               </>
             ) : null}
           </div>
+        ) : null}
+
+        {unitNumber ? (
+          <section className="panel" style={{ marginTop: '20px' }}>
+            <h3>Need to sign this lease?</h3>
+            <p className="muted">Open the tenant portal and verify your PIN to review and sign this lease using Apple Pencil or your finger.</p>
+            <a className="primary-btn" href={`${import.meta.env.BASE_URL}qr/${encodeURIComponent(unitNumber)}`}>
+              Review & Sign Lease
+            </a>
+          </section>
         ) : null}
 
         <p className="muted" style={{ marginTop: '20px' }}>
