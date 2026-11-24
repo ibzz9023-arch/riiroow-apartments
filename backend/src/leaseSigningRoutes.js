@@ -26,7 +26,7 @@ const getLeaseAndTenant = async (leaseId) => {
   if (!UUID.test(String(leaseId || ''))) return null;
   const { data: lease, error } = await supabaseServiceRole
     .from('leases')
-    .select('id, tenant_id, unit_id, unit_number, start_date, end_date, monthly_rent, security_deposit, status, notes')
+    .select('id, tenant_id, unit_id, unit_number, start_date, end_date, monthly_rent, security_deposit, status, notes, created_at')
     .eq('id', leaseId)
     .maybeSingle();
   if (error) throw error;
@@ -47,6 +47,7 @@ const getLeaseAndTenant = async (leaseId) => {
     tenant_photo_storage_path: tenant.photo_storage_path || null,
     unit_id: lease.unit_id,
     unit_number: lease.unit_number,
+    created_at: lease.created_at,
     start_date: lease.start_date,
     end_date: lease.end_date,
     monthly_rent: Number(lease.monthly_rent || 0),
@@ -232,6 +233,7 @@ tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSessio
         id: current.lease.id,
         tenantName: current.tenant.name,
         unitNumber: current.lease.unit_number ?? current.lease.unitNumber,
+        createdAt: current.lease.created_at,
         startDate: current.lease.start_date,
         endDate: current.lease.end_date,
         monthlyRent: current.lease.monthly_rent,
