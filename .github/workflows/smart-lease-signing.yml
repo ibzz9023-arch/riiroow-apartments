@@ -5,6 +5,7 @@ on:
     branches:
       - feature/smart-lease-signing
       - deploy/smart-lease-signing-main
+      - feature/signature-photo-and-qr-sharing
   pull_request:
     branches:
       - main
