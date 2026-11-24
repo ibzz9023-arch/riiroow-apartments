@@ -76,6 +76,23 @@ export const listApprovalRequests = async ({ requesterId = null } = {}) => {
   return (data || []).map(toPublicRequest);
 };
 
+export const getApprovalRequestOptions = async () => {
+  const client = requireDatabase();
+  const [propertiesResult, categoriesResult] = await Promise.all([
+    client.from('properties').select('id, name').order('name', { ascending: true }),
+    client.from('financial_expense_categories')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name', { ascending: true }),
+  ]);
+  if (propertiesResult.error) throw propertiesResult.error;
+  if (categoriesResult.error) throw categoriesResult.error;
+  return {
+    properties: propertiesResult.data || [],
+    expenseCategories: categoriesResult.data || [],
+  };
+};
+
 const mapReviewError = (error) => {
   const code = String(error?.code || '');
   const statusCode = ({
