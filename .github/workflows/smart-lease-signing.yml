@@ -1,0 +1,45 @@
+name: Smart Lease Signing Checks
+
+on:
+  push:
+    branches:
+      - feature/smart-lease-signing
+  pull_request:
+    branches:
+      - deploy/security-deposits
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/smart-lease-signing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Resolve backend dependencies and refresh lockfile
+        run: npm install --prefix backend --no-audit --no-fund
+      - name: Verify clean backend lockfile installation
+        run: npm ci --prefix backend --no-audit --no-fund
+      - name: Run backend tests
+        run: npm test --prefix backend
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build --prefix frontend
+      - name: Upload generated backend lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-lease-signing-backend-lockfile
+          path: backend/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
