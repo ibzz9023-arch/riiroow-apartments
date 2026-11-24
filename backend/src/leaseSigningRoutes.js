@@ -156,6 +156,10 @@ const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, ac
 
 const finalizeSession = async (session, appOrigin) => {
   if (session.status === 'signed' && session.final_document_id) return sessionResponse(session);
+  const current = await getLeaseAndTenant(session.lease_id);
+  if (!current || current.leaseHash !== session.lease_hash) {
+    throw Object.assign(new Error('Lease details changed after signing. This signing version cannot be finalized; management must prepare a new version for both parties.'), { statusCode: 409 });
+  }
   if (!session.tenant_signature_path || !session.manager_signature_path || !session.tenant_signed_at || !session.manager_signed_at) {
     throw Object.assign(new Error('Both signatures are required before the final lease can be generated.'), { statusCode: 409 });
   }
@@ -332,7 +336,9 @@ tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature',
       return res.status(409).json({ error: 'Lease details changed. Ask management to prepare a new signing version.' });
     }
     const signature = decodeSignaturePng(req.body?.signatureDataUrl);
-    const storagePath = `${current.lease.id}/signatures/${session.id}-tenant.png`;
+    // Unique per submission: concurrent requests must never delete or overwrite
+    // the other request's signature object when one loses the conditional update.
+    const storagePath = `${current.lease.id}/signatures/${session.id}-tenant-${crypto.randomUUID()}.png`;
     const { error: uploadError } = await supabaseServiceRole.storage.from(BUCKET).upload(storagePath, signature, {
       contentType: 'image/png',
       upsert: false,
@@ -471,7 +477,9 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
     if (!manager) return res.status(403).json({ error: 'The manager account could not be verified.' });
     const signerName = manager.name || 'Authorized Manager';
     const signedAt = new Date().toISOString();
-    const storagePath = `${req.params.id}/signatures/${session.id}-manager.png`;
+    // Unique per submission so a losing concurrent request can safely clean up
+    // only its own object without deleting the winning manager signature.
+    const storagePath = `${req.params.id}/signatures/${session.id}-manager-${crypto.randomUUID()}.png`;
     const update = {
       manager_signature_path: storagePath,
       manager_signed_at: signedAt,
