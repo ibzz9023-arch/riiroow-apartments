@@ -93,7 +93,7 @@ const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, ac
   }
 };
 
-const finalizeSession = async (session, appOrigin) => {
+const finalizeSession = async (session) => {
   if (session.status === 'signed' && session.final_document_id) return sessionResponse(session);
   if (!session.tenant_signature_path || !session.manager_signature_path || !session.tenant_signed_at || !session.manager_signed_at) {
     throw Object.assign(new Error('Both signatures are required before the final lease can be generated.'), { statusCode: 409 });
@@ -388,7 +388,7 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
       return res.status(409).json({ error: 'The tenant must sign before the manager.' });
     }
     if (session.manager_signed_at) {
-      return res.json({ session: await finalizeSession(session, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
+      return res.json({ session: await finalizeSession(session) });
     }
 
     const signature = decodeSignaturePng(req.body?.signatureDataUrl);
@@ -435,7 +435,7 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
       metadata: { signatureSha256: crypto.createHash('sha256').update(signature).digest('hex') },
     });
     try {
-      return res.json({ session: await finalizeSession(updated, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
+      return res.json({ session: await finalizeSession(updated) });
     } catch (finalizeError) {
       console.error('Signed lease PDF generation failed:', finalizeError?.message || finalizeError);
       await recordSigningEvent({
