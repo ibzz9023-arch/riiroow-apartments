@@ -4,10 +4,10 @@
 
 1. A manager opens the lease's existing **Documents** panel and starts or continues Smart Lease Signing.
 2. The tenant opens the unit QR portal, verifies the tenant PIN, and chooses **Review & Sign Lease**.
-3. The tenant reviews the lease terms and either writes a signature using Apple Pencil or finger input, or uploads a close, well-lit JPEG/PNG photo of a paper signature. The browser extracts dark handwritten marks into a transparent PNG and shows both the source photo and extracted result before confirmation. The API accepts this only from that lease's active PIN-verified tenant QR session.
+3. The tenant reviews the lease terms and writes a fresh handwritten signature using a finger, stylus, or mouse in the on-screen signing area. The API accepts the signature only from that lease's active PIN-verified tenant QR session. Uploading a signature image and reusing a previously stored signature are not supported.
 4. After the tenant signature is saved, the manager refreshes signing status and signs from the authenticated manager account.
 5. The API generates an A4 PDF, records its SHA-256 digest, and stores it in the existing private `lease-documents` bucket and `lease_documents` table as `document_type = 'signed_lease'`.
-6. The signed PDF includes each signer's independent server timestamp and the existing lease-document QR link. The tenant QR archive lists the generated signed lease separately from manually uploaded supporting documents. The drawn or extracted signature PNG is a temporary private-storage artifact used while the PDF is generated; after the signed PDF is safely archived, that PNG is deleted. When the photo method is used, the original source photograph is retained in the private bucket for manager review through a short-lived signed URL. The signing audit event records hashes for both source and extracted images. This establishes that the extracted image came from the uploaded photo, but it does not verify the person's identity or prove who physically wrote the signature. The signed PDF remains the retained signature record.
+6. The signed PDF includes each signer's independent server timestamp and the existing lease-document QR link. The tenant QR archive lists the generated signed lease separately from manually uploaded supporting documents. Freshly drawn signature PNGs are temporary private-storage artifacts used only while the PDF is generated; after the signed PDF is safely archived, those PNGs are deleted. The signed PDF is the retained signature record.
 
 The same QR link continues to resolve to the current document list, so later manual uploads remain visible without reprinting the QR. The manager's lease Documents panel also provides Share QR / link, Copy link, and Download QR controls for the unit's PIN-protected tenant portal.
 
@@ -17,9 +17,9 @@ Apply migrations in order:
 
 1. `backend/migrations/202611070002_lease_documents.sql` — creates the existing private document archive and lease-specific QR access.
 2. `backend/migrations/202611240001_smart_lease_signing.sql` — adds document classification, signing sessions, and signing audit events.
-3. `backend/migrations/202611240002_tenant_signature_photo_evidence.sql` — adds the private source-photo path used for manager evidence review.
+The historical `202611240002_tenant_signature_photo_evidence.sql` migration belongs to the optional photo-upload experiment and is not required for manual-only signing. Do not apply it as part of this feature. If it was applied in another environment, its nullable column is left untouched for data preservation; the application no longer reads or writes it.
 
-These migration files are committed for review only. They are not applied to the live Supabase database by this feature branch.
+The core signing migration is already part of the repository. This change does not add, apply, or alter production database migrations.
 
 ## Runtime configuration
 
@@ -34,8 +34,8 @@ These migration files are committed for review only. They are not applied to the
 - Verify a tenant can load the signing step only after PIN verification for the matching active unit.
 - Verify a manager session cannot submit a tenant signature and a tenant QR session cannot submit a manager signature.
 - Verify the manager cannot sign before the tenant.
-- Verify a tenant can upload a paper-signature photo, preview the extracted transparent signature, and submit it; verify the original photo remains private and is viewable only by an authenticated manager.
-- Verify the tenant photo method does not claim identity verification and that drawn signatures continue to work.
+- Verify the tenant can sign only by drawing a fresh signature with touch, stylus, or mouse; image upload and reusable saved signatures are unavailable.
+- Verify the final signed PDF retains both signatures after temporary PNG cleanup.
 - Verify the manager can share, copy, and download the correct unit QR code, including Unit 302 → `/qr/302`.
 - Verify tenant and manager dates differ correctly when they sign on different days.
 - Verify the final PDF appears in the existing manager Documents list and public QR archive, alongside manual uploads.

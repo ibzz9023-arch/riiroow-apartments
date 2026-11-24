@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
-import { createSignedLeasePdf, decodeSignaturePng, decodeSignatureSourceImage, hashLeaseSnapshot } from '../src/leaseSigning.js';
+import { createSignedLeasePdf, decodeSignaturePng, hashLeaseSnapshot } from '../src/leaseSigning.js';
 
 
 const crc32 = (buffer) => {
@@ -111,26 +111,4 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
   });
   assert.ok(pdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
   assert.ok(pdf.length > 1000);
-});
-
-test('decodeSignatureSourceImage accepts a JPEG source photograph', () => {
-  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
-  const result = decodeSignatureSourceImage(`data:image/jpeg;base64,${jpeg.toString('base64')}`);
-  assert.equal(result.mimeType, 'image/jpeg');
-  assert.equal(result.extension, 'jpg');
-  assert.deepEqual(result.buffer, jpeg);
-});
-
-test('decodeSignatureSourceImage accepts a PNG source photograph', () => {
-  const png = validPng();
-  const result = decodeSignatureSourceImage(`data:image/png;base64,${png.toString('base64')}`);
-  assert.equal(result.mimeType, 'image/png');
-  assert.equal(result.extension, 'png');
-  assert.deepEqual(result.buffer, png);
-});
-
-test('decodeSignatureSourceImage rejects mismatched or oversized source images', () => {
-  assert.throws(() => decodeSignatureSourceImage('data:image/jpeg;base64,AAAA'), /invalid or exceeds 1.5 MB/);
-  const oversized = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(1536 * 1024)]);
-  assert.throws(() => decodeSignatureSourceImage(`data:image/jpeg;base64,${oversized.toString('base64')}`), /invalid or exceeds 1.5 MB/);
 });
