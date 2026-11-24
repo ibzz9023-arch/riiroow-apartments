@@ -42,9 +42,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --prefix frontend --no-audit --no-fund
       - name: Run backend tests
-        run: npm test --prefix backend
-        env:
-          NODE_OPTIONS: --experimental-test-module-mocks
+        run: node --experimental-test-module-mocks --test
+        working-directory: backend
       - name: Build frontend
         run: npm run build --prefix frontend
       - name: Upload generated backend lockfile for review
