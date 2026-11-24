@@ -43,6 +43,32 @@ CREATE TABLE IF NOT EXISTS public.lease_signing_sessions (
 CREATE INDEX IF NOT EXISTS idx_lease_signing_sessions_lease_created
   ON public.lease_signing_sessions (lease_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.lease_signing_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lease_id uuid NOT NULL REFERENCES public.leases(id) ON DELETE RESTRICT,
+  session_id uuid NOT NULL REFERENCES public.lease_signing_sessions(id) ON DELETE RESTRICT,
+  event_type text NOT NULL CHECK (event_type IN (
+    'session_created',
+    'tenant_signed',
+    'manager_signed',
+    'signed_pdf_generated',
+    'signed_pdf_generation_failed',
+    'lease_terms_changed'
+  )),
+  actor_type text NOT NULL CHECK (actor_type IN ('tenant', 'manager', 'system')),
+  actor_user_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  actor_name text,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_lease_signing_events_session_time
+  ON public.lease_signing_events (session_id, occurred_at ASC);
+
+ALTER TABLE public.lease_signing_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.lease_signing_events FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.lease_signing_events TO service_role;
+
 ALTER TABLE public.lease_signing_sessions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.lease_signing_sessions FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.lease_signing_sessions TO service_role;
