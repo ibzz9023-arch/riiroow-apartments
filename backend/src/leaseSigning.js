@@ -87,6 +87,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
     doc.text('Each signing date above is recorded independently by the Riiroow server (UTC).');
+    if (doc.y > 560) doc.addPage();
     doc.moveDown(1.5);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
     doc.font('Helvetica').fontSize(8).fillColor('#555555').text('Scan this QR code to view this signed lease and other documents attached to this lease.');
