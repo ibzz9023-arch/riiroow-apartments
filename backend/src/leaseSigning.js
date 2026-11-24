@@ -35,7 +35,7 @@ const addField = (doc, label, value) => {
   doc.moveDown(0.7);
 };
 
-export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId }) =>
+export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, info: {
       Title: 'Riiroow Signed Lease Agreement',
@@ -51,6 +51,12 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.moveDown(0.25);
     doc.font('Helvetica').fontSize(10).fillColor('#777777').text('RESIDENTIAL LEASE AGREEMENT');
     doc.moveDown(1.4);
+    if (tenantPhoto) {
+      doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Tenant photo');
+      doc.image(tenantPhoto, 54, doc.y + 6, { fit: [82, 98] });
+      doc.y += 112;
+      doc.moveDown(0.5);
+    }
     doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Lease details');
     doc.moveDown(0.8);
     addField(doc, 'Lease reference', snapshot.id);
