@@ -90,7 +90,6 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/leases', leaseSigningRouter);
 app.use('/api/public/qr', tenantLeaseSigningRouter);
-app.use('/api/public/qr', leaseSigningRouter);
 
 const QR_MEDIA_BUCKET = 'maintenance-evidence';
 const QR_MEDIA_LIMITS = {
