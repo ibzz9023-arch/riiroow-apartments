@@ -26,7 +26,7 @@ DECLARE
     v_today DATE := (NOW() AT TIME ZONE 'Africa/Mogadishu')::date;
     v_expense_result JSONB;
 BEGIN
-    IF p_action NOT IN ('approve', 'reject') THEN
+    IF p_action IS NULL OR p_action NOT IN ('approve', 'reject') THEN
         RAISE EXCEPTION 'Choose approve or reject.'
             USING ERRCODE = '22023';
     END IF;
