@@ -446,52 +446,35 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
     if (!current || current.leaseHash !== session.lease_hash) {
       return res.status(409).json({ error: 'Lease details changed after signing began. Start a new signing session so both parties sign the same lease version.' });
     }
-    const signerType = String(req.body?.signerType || '');
-    if (signerType !== 'manager') {
+    if (String(req.body?.signerType || '') !== 'manager') {
       return res.status(403).json({ error: 'Tenant signatures must be submitted from the tenant PIN-verified QR session.' });
     }
-    if (signerType === 'tenant' && session.tenant_signed_at) {
-      return res.status(409).json({ error: 'The tenant has already signed this lease.' });
-    }
-    if (signerType === 'manager' && !session.tenant_signed_at) {
+    if (!session.tenant_signed_at) {
       return res.status(409).json({ error: 'The tenant must sign before the manager.' });
     }
-    if (signerType === 'manager' && session.manager_signed_at) {
+    if (session.manager_signed_at) {
       return res.json({ session: await finalizeSession(session, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
     }
 
     const signature = decodeSignaturePng(req.body?.signatureDataUrl);
-    let signerName;
-    let update;
-    if (signerType === 'tenant') {
-      signerName = current.tenant.name;
-      update = {
-        tenant_signature_path: `${req.params.id}/signatures/${session.id}-tenant.png`,
-        tenant_signed_at: new Date().toISOString(),
-        tenant_captured_by: req.auth.sub,
-        status: 'awaiting_manager',
-        updated_at: new Date().toISOString(),
-      };
-    } else {
-      const { data: manager, error: managerError } = await supabaseServiceRole
-        .from('users')
-        .select('id, name')
-        .eq('id', req.auth.sub)
-        .maybeSingle();
-      if (managerError) throw managerError;
-      if (!manager) return res.status(403).json({ error: 'The manager account could not be verified.' });
-      signerName = manager.name || 'Authorized Manager';
-      update = {
-        manager_signature_path: `${req.params.id}/signatures/${session.id}-manager.png`,
-        manager_signed_at: new Date().toISOString(),
-        manager_signed_by: req.auth.sub,
-        manager_name: signerName,
-        status: 'document_pending',
-        updated_at: new Date().toISOString(),
-      };
-    }
-
-    const storagePath = signerType === 'tenant' ? update.tenant_signature_path : update.manager_signature_path;
+    const { data: manager, error: managerError } = await supabaseServiceRole
+      .from('users')
+      .select('id, name')
+      .eq('id', req.auth.sub)
+      .maybeSingle();
+    if (managerError) throw managerError;
+    if (!manager) return res.status(403).json({ error: 'The manager account could not be verified.' });
+    const signerName = manager.name || 'Authorized Manager';
+    const signedAt = new Date().toISOString();
+    const storagePath = `${req.params.id}/signatures/${session.id}-manager.png`;
+    const update = {
+      manager_signature_path: storagePath,
+      manager_signed_at: signedAt,
+      manager_signed_by: req.auth.sub,
+      manager_name: signerName,
+      status: 'document_pending',
+      updated_at: signedAt,
+    };
     const { error: uploadError } = await supabaseServiceRole.storage.from(BUCKET).upload(storagePath, signature, {
       contentType: 'image/png',
       upsert: false,
