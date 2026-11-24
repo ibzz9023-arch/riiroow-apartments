@@ -285,6 +285,7 @@ const getTenantSigningLease = async (req) => {
 };
 
 tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const current = await getTenantSigningLease(req);
     if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
@@ -315,6 +316,7 @@ tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSessio
 });
 
 tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const current = await getTenantSigningLease(req);
     if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
@@ -374,6 +376,7 @@ tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature',
 });
 
 leaseSigningRouter.get('/:id/signing', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
     const { data, error } = await supabaseServiceRole
@@ -391,6 +394,7 @@ leaseSigningRouter.get('/:id/signing', managerOnly, async (req, res) => {
 });
 
 leaseSigningRouter.post('/:id/signing/start', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
     const current = await getLeaseAndTenant(req.params.id);
@@ -434,6 +438,7 @@ leaseSigningRouter.post('/:id/signing/start', managerOnly, async (req, res) => {
 });
 
 leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
     const session = await getSession(req.params.id, req.params.sessionId);
@@ -524,6 +529,7 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
 });
 
 leaseSigningRouter.post('/:id/signing/:sessionId/finalize', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
     const session = await getSession(req.params.id, req.params.sessionId);
