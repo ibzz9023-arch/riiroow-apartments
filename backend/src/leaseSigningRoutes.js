@@ -9,7 +9,7 @@ import {
   hashLeaseDocumentToken,
   leaseDocumentTokenMatchesHash,
 } from './leaseDocumentTokens.js';
-import { createSignedLeasePdf, decodeSignaturePng, hashLeaseSnapshot } from './leaseSigning.js';
+import { createSignedLeasePdf, decodeSignaturePng, decodeSignatureSourceImage, hashLeaseSnapshot } from './leaseSigning.js';
 import { requireTenantQrSession } from './tenantQrAuth.js';
 
 export const leaseSigningRouter = Router();
@@ -355,6 +355,7 @@ tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSessio
 
 tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  let uploadedPaths = [];
   try {
     const current = await getTenantSigningLease(req);
     if (!current) return res.status(404).json({ error: 'No lease is available for this tenant session.' });
@@ -370,19 +371,33 @@ tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature',
       return res.status(409).json({ error: 'Lease details changed. Ask management to prepare a new signing version.' });
     }
     const signature = decodeSignaturePng(req.body?.signatureDataUrl);
-    // Unique per submission: concurrent requests must never delete or overwrite
-    // the other request's signature object when one loses the conditional update.
+    const sourcePhoto = req.body?.signatureSourceDataUrl
+      ? decodeSignatureSourceImage(req.body.signatureSourceDataUrl)
+      : null;
+    const storage = supabaseServiceRole.storage.from(BUCKET);
     const storagePath = `${current.lease.id}/signatures/${session.id}-tenant-${crypto.randomUUID()}.png`;
-    const { error: uploadError } = await supabaseServiceRole.storage.from(BUCKET).upload(storagePath, signature, {
+    if (sourcePhoto) {
+      const sourcePath = `${current.lease.id}/signature-evidence/${session.id}-tenant-${crypto.randomUUID()}.${sourcePhoto.extension}`;
+      const { error: sourceUploadError } = await storage.upload(sourcePath, sourcePhoto.buffer, {
+        contentType: sourcePhoto.mimeType,
+        upsert: false,
+      });
+      if (sourceUploadError) throw sourceUploadError;
+      uploadedPaths.push(sourcePath);
+      req.signatureSourcePath = sourcePath;
+    }
+    const { error: uploadError } = await storage.upload(storagePath, signature, {
       contentType: 'image/png',
       upsert: false,
     });
     if (uploadError) throw uploadError;
+    uploadedPaths.push(storagePath);
     const signedAt = new Date().toISOString();
     const { data: updated, error: updateError } = await supabaseServiceRole
       .from('lease_signing_sessions')
       .update({
         tenant_signature_path: storagePath,
+        tenant_signature_source_path: req.signatureSourcePath || null,
         tenant_signed_at: signedAt,
         tenant_captured_by: null,
         status: 'awaiting_manager',
@@ -393,12 +408,10 @@ tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature',
       .is('tenant_signed_at', null)
       .select('*')
       .maybeSingle();
-    if (updateError) {
-      await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
-      throw updateError;
-    }
+    if (updateError) throw updateError;
     if (!updated) {
-      await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
+      await storage.remove(uploadedPaths);
+      uploadedPaths = [];
       return res.status(409).json({ error: 'The tenant signature was already submitted.' });
     }
     await recordSigningEvent({
@@ -407,11 +420,50 @@ tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature',
       eventType: 'tenant_signed',
       actorType: 'tenant',
       actorName: current.tenant.name,
-      metadata: { signatureSha256: crypto.createHash('sha256').update(signature).digest('hex') },
+      metadata: {
+        signatureSha256: crypto.createHash('sha256').update(signature).digest('hex'),
+        signatureMethod: sourcePhoto ? 'photo_extraction' : 'drawn',
+        ...(sourcePhoto ? {
+          sourcePhotoSha256: crypto.createHash('sha256').update(sourcePhoto.buffer).digest('hex'),
+          sourcePhotoMimeType: sourcePhoto.mimeType,
+          extraction: 'client_canvas_threshold',
+          sourcePhotoRetainedForManagerReview: true,
+        } : {}),
+      },
     });
     return res.json({ session: sessionResponse(updated) });
   } catch (error) {
+    if (uploadedPaths.length) {
+      const { error: cleanupError } = await supabaseServiceRole.storage.from(BUCKET).remove(uploadedPaths);
+      if (cleanupError) console.warn('Failed to clean up rejected tenant signature upload:', cleanupError.message || cleanupError);
+    }
     return sendError(res, error, 'Unable to save the tenant signature.');
+  }
+});
+
+
+leaseSigningRouter.get('/:id/signing/evidence', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
+    const { data: session, error } = await supabaseServiceRole
+      .from('lease_signing_sessions')
+      .select('tenant_signature_source_path')
+      .eq('lease_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!session?.tenant_signature_source_path) {
+      return res.status(404).json({ error: 'No source photograph was uploaded for this tenant signature.' });
+    }
+    const { data, error: urlError } = await supabaseServiceRole.storage
+      .from(BUCKET)
+      .createSignedUrl(session.tenant_signature_source_path, 600);
+    if (urlError) throw urlError;
+    return res.json({ url: data.signedUrl, expiresInSeconds: 600 });
+  } catch (error) {
+    return sendError(res, error, 'Unable to prepare the tenant signature evidence image.');
   }
 });
 
