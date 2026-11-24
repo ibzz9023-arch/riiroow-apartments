@@ -92,7 +92,7 @@ const getLeaseAndTenant = async (leaseId) => {
   if (!lease) return null;
   const { data: tenant, error: tenantError } = await supabaseServiceRole
     .from('tenants')
-    .select('id, name')
+    .select('id, name, phone, email')
     .eq('id', lease.tenant_id)
     .maybeSingle();
   if (tenantError) throw tenantError;
@@ -101,6 +101,8 @@ const getLeaseAndTenant = async (leaseId) => {
     id: lease.id,
     tenant_id: lease.tenant_id,
     tenant_name: tenant.name,
+    tenant_phone: tenant.phone || '',
+    tenant_email: tenant.email || '',
     unit_id: lease.unit_id,
     unit_number: lease.unit_number,
     start_date: lease.start_date,
