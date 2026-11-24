@@ -95,7 +95,6 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
     tenantName: 'Test Tenant',
     managerName: 'Test Manager',
     sessionId: 'session-test-001',
-    qrBuffer: signature,
   });
   assert.ok(pdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
   assert.ok(pdf.length > 1000);
