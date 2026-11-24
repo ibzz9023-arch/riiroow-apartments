@@ -23,7 +23,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   const signerName = signerType === 'tenant' ? session?.tenantName : 'Authorized manager';
 
   useEffect(() => {
-    if (!open || !lease?.id) return;
+    if (!open || (!tenantAccessToken && !lease?.id)) return;
     let active = true;
     setLoading(true);
     setError('');
