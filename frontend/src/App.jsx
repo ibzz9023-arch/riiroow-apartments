@@ -4069,7 +4069,7 @@ const handleLogin = async (event) => {
                               <p className="muted">Signed lease agreement · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB</p>
                               <p className="muted">{document.createdAt ? `Added ${formatDateTime(document.createdAt)}` : ''}</p>
                               <div className="form-actions">
-                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">View signed lease</a>
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
                               </div>
                             </div>
@@ -4087,7 +4087,7 @@ const handleLogin = async (event) => {
                                 {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
                               </p>
                               <div className="form-actions">
-                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
                               </div>
                             </div>
