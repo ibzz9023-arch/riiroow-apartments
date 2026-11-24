@@ -109,17 +109,28 @@ const finalizeSession = async (session) => {
   const documentId = session.final_document_id || crypto.randomUUID();
   const documentHash = crypto.createHash('sha256').update(pdf).digest('hex');
   if (!session.final_document_id) {
-    const { error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
-      id: documentId,
-      lease_id: session.lease_id,
-      original_name: 'Signed_Lease_Agreement.pdf',
-      storage_path: storagePath,
-      mime_type: 'application/pdf',
-      file_size: pdf.length,
-      document_type: 'signed_lease',
-      created_by: session.manager_signed_by,
-    }]);
-    if (insertError) throw insertError;
+    const { data: existingDocument, error: existingDocumentError } = await supabaseServiceRole
+      .from('lease_documents')
+      .select('id')
+      .eq('lease_id', session.lease_id)
+      .eq('storage_path', storagePath)
+      .maybeSingle();
+    if (existingDocumentError) throw existingDocumentError;
+    if (existingDocument?.id) {
+      documentId = existingDocument.id;
+    } else {
+      const { error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
+        id: documentId,
+        lease_id: session.lease_id,
+        original_name: 'Signed_Lease_Agreement.pdf',
+        storage_path: storagePath,
+        mime_type: 'application/pdf',
+        file_size: pdf.length,
+        document_type: 'signed_lease',
+        created_by: session.manager_signed_by,
+      }]);
+      if (insertError) throw insertError;
+    }
   }
   const { data: updated, error: updateError } = await supabaseServiceRole
     .from('lease_signing_sessions')
@@ -162,7 +173,6 @@ leaseSigningRouter.post('/:id/signing/start', managerOnly, async (req, res) => {
       .from('lease_signing_sessions')
       .select('*')
       .eq('lease_id', req.params.id)
-      .in('status', ['awaiting_tenant', 'awaiting_manager', 'document_pending'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
