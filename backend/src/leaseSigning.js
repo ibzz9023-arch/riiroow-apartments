@@ -101,85 +101,179 @@ const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
-const addField = (doc, label, value) => {
-  doc.font('Helvetica-Bold').fontSize(9).fillColor('#555555').text(label.toUpperCase());
-  doc.font('Helvetica').fontSize(11).fillColor('#171717').text(String(value || '—'), { width: 500 });
-  doc.moveDown(0.7);
+const addSectionHeading = (doc, title, y) => {
+  doc.font('Helvetica-Bold').fontSize(12.75).fillColor('#222222')
+    .text(title, 51, y, { width: 493, lineBreak: false });
+  doc.moveTo(51, y + 19).lineTo(544, y + 19).strokeColor('#bbbbbb').lineWidth(0.7).stroke();
+  return y + 27;
+};
+
+const drawDetail = (doc, label, value, x, y, width) => {
+  doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
+    .text(label + ':', x, y + 6, { continued: true });
+  doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
+    .text(' ' + String(value || '—'), { width: width - 8 });
+  doc.moveTo(x, y + 25).lineTo(x + width, y + 25).strokeColor('#eeeeee').lineWidth(0.55).stroke();
+};
+
+const drawDetailsGrid = (doc, fields, y) => {
+  const columnGap = 26;
+  const columnWidth = (493 - columnGap) / 2;
+  fields.forEach((field, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    drawDetail(doc, field[0], field[1], 51 + column * (columnWidth + columnGap), y + row * 31, columnWidth);
+  });
+  return y + Math.ceil(fields.length / 2) * 31;
 };
 
 export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
   new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, bufferPages: true, info: {
-      Title: 'Riiroow Signed Lease Agreement',
-      Author: 'Riiroow Apartments',
-      Subject: `Signed lease ${snapshot.id}`,
-      CreationDate: new Date(managerSignedAt),
-    } });
+    // Keep the signed PDF on the same A4 page geometry and section order as
+    // the manager's browser-print lease. Signature images occupy the existing
+    // signature whitespace; they do not add layout height or move later text.
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: { top: 51, bottom: 51, left: 51, right: 51 },
+      bufferPages: true,
+      info: {
+        Title: 'Riiroow Signed Lease Agreement',
+        Author: 'Riiroow Apartments',
+        Subject: 'Signed lease ' + snapshot.id,
+        CreationDate: new Date(managerSignedAt),
+      },
+    });
     const chunks = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    doc.font('Helvetica-Bold').fontSize(20).fillColor('#171717').text('RIIROOW APARTMENTS');
-    doc.moveDown(0.25);
-    doc.font('Helvetica').fontSize(10).fillColor('#777777').text('RESIDENTIAL LEASE AGREEMENT');
-    doc.moveDown(1.4);
+    const pageWidth = 493;
+    let y = 51;
+
+    // Header mirrors the unsigned print template's centered brand, title,
+    // lease reference, divider, and vertical spacing.
+    doc.font('Helvetica-Bold').fontSize(16.5).fillColor('#222222')
+      .text('RIIROOW APARTMENT', 51, y + 58, { width: pageWidth, align: 'center', lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(13.5).fillColor('#222222')
+      .text('LEASE SUMMARY', 51, y + 82, { width: pageWidth, align: 'center', lineBreak: false });
+    doc.font('Helvetica').fontSize(9).fillColor('#666666')
+      .text('Lease ID: ' + String(snapshot.id || '—'), 51, y + 105, { width: pageWidth, align: 'center', lineBreak: false });
+    doc.moveTo(51, y + 124).lineTo(544, y + 124).strokeColor('#222222').lineWidth(2.25).stroke();
+    y += 145;
+
     if (tenantPhoto) {
-      doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Tenant photo');
-      doc.image(tenantPhoto, 54, doc.y + 6, { fit: [82, 98] });
-      doc.y += 112;
-      doc.moveDown(0.5);
+      doc.image(tenantPhoto, 51, y, { fit: [78, 93] });
+      y += 105;
     }
-    doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Lease details');
-    doc.moveDown(0.8);
-    addField(doc, 'Lease reference', snapshot.id);
-    addField(doc, 'Unit', snapshot.unit_number ?? snapshot.unit_id ?? '—');
-    addField(doc, 'Tenant', snapshot.tenant_name);
-    addField(doc, 'Tenant phone', snapshot.tenant_phone);
-    addField(doc, 'Tenant email', snapshot.tenant_email);
-    addField(doc, 'Lease period', `${snapshot.start_date || '—'} to ${snapshot.end_date || '—'}`);
-    addField(doc, 'Monthly rent', `$${Number(snapshot.monthly_rent || 0).toFixed(2)}`);
-    addField(doc, 'Security deposit', `$${Number(snapshot.security_deposit || 0).toFixed(2)}`);
-    addField(doc, 'Lease status at signing', snapshot.status);
-    if (snapshot.notes) addField(doc, 'Additional terms / notes', snapshot.notes);
 
-    if (doc.y > 450) doc.addPage();
-    doc.moveDown(0.6);
-    doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Signatures');
-    doc.moveDown(0.8);
-    const signatureWidth = 205;
-    const leftX = 54;
-    const rightX = 330;
-    const signatureY = doc.y;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#333333').text('TENANT', leftX, signatureY);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#333333').text('MANAGER', rightX, signatureY);
-    doc.image(tenantSignature, leftX, signatureY + 20, { fit: [signatureWidth, 82], align: 'center', valign: 'center' });
-    doc.image(managerSignature, rightX, signatureY + 20, { fit: [signatureWidth, 82], align: 'center', valign: 'center' });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(tenantName, leftX, signatureY + 112, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(tenantSignedAt)} EAT`, leftX, signatureY + 128, { width: signatureWidth });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(managerName, rightX, signatureY + 112, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(managerSignedAt)} EAT`, rightX, signatureY + 128, { width: signatureWidth });
+    y = addSectionHeading(doc, '1. Tenant Information', y);
+    y = drawDetailsGrid(doc, [
+      ['Tenant Name', snapshot.tenant_name || tenantName],
+      ['Phone', snapshot.tenant_phone],
+      ['Email', snapshot.tenant_email],
+      ['Unit Number', snapshot.unit_number ?? snapshot.unit_id],
+    ], y);
 
-    doc.moveTo(leftX, signatureY + 158).lineTo(leftX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
-    doc.moveTo(rightX, signatureY + 158).lineTo(rightX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
-    doc.moveDown(2);
-    doc.font('Helvetica').fontSize(8).fillColor('#777777')
-      .text(`Signing record: ${sessionId}`, { align: 'left' });
-    doc.text('Each signing date above is recorded independently by the Riiroow server and displayed in East Africa Time (EAT).');
-    doc.text(`Document reference: RII-LEASE-${sessionId}`);
-    if (doc.y > 560) doc.addPage();
-    doc.moveDown(1.5);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text('Scan this QR code to view this signed lease and other documents attached to this lease.');
-    doc.moveDown(0.5);
-    doc.image(qrBuffer, { width: 112, height: 112, align: 'center' });
+    y += 11;
+    y = addSectionHeading(doc, '2. Lease Term', y);
+    y = drawDetailsGrid(doc, [
+      ['Start Date', snapshot.start_date],
+      ['End Date', snapshot.end_date],
+      ['Lease Status', snapshot.status],
+      ['Unit', snapshot.unit_number ?? snapshot.unit_id],
+    ], y);
 
-    // Add consistent page numbering after all content has been laid out.
+    y += 11;
+    y = addSectionHeading(doc, '3. Rent and Security Deposit', y);
+    y = drawDetailsGrid(doc, [
+      ['Monthly Rent', '$' + Number(snapshot.monthly_rent || 0).toFixed(2)],
+      ['Security Deposit', '$' + Number(snapshot.security_deposit || 0).toFixed(2)],
+    ], y);
+
+    y += 11;
+    y = addSectionHeading(doc, '4. Additional Notes', y);
+    doc.rect(51, y, pageWidth, 53).lineWidth(0.7).strokeColor('#cccccc').stroke();
+    doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
+      .text(String(snapshot.notes || 'No additional notes.'), 60, y + 8, {
+        width: pageWidth - 18,
+        height: 37,
+        lineBreak: true,
+      });
+    y += 70;
+
+    // The unsigned template has a fixed two-column signature block. Keep its
+    // top border, labels, names, and date baselines fixed in both versions.
+    const signatureTop = y + 41;
+    const signatureGap = 30;
+    const signatureWidth = (pageWidth - signatureGap) / 2;
+    const leftX = 51;
+    const rightX = leftX + signatureWidth + signatureGap;
+    const blockHeight = 100;
+    if (signatureTop + blockHeight + 80 > 790) {
+      doc.addPage();
+      y = 51;
+    } else {
+      y = signatureTop;
+    }
+
+    const blockY = y;
+    [leftX, rightX].forEach((x) => {
+      doc.moveTo(x, blockY).lineTo(x + signatureWidth, blockY).strokeColor('#222222').lineWidth(0.7).stroke();
+    });
+
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#222222')
+      .text('Tenant Signature', leftX, blockY + 8, { width: signatureWidth, lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#222222')
+      .text('Riiroow Apartment Management', rightX, blockY + 8, { width: signatureWidth, lineBreak: false });
+
+    // Signature artwork is drawn into the blank area already reserved by the
+    // printed form. It does not participate in text flow.
+    doc.image(tenantSignature, leftX, blockY + 25, { fit: [signatureWidth - 8, 39], align: 'left', valign: 'center' });
+    doc.image(managerSignature, rightX, blockY + 25, { fit: [signatureWidth - 8, 39], align: 'left', valign: 'center' });
+
+    doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
+      .text('Name: ' + String(tenantName || snapshot.tenant_name || '—'), leftX, blockY + 70, { width: signatureWidth });
+    doc.font('Helvetica').fontSize(8.5).fillColor('#555555')
+      .text('Date: ' + formatSigningDate(tenantSignedAt) + ' EAT', leftX, blockY + 85, { width: signatureWidth });
+    doc.font('Helvetica').fontSize(8.5).fillColor('#555555')
+      .text('Date: ' + formatSigningDate(managerSignedAt) + ' EAT', rightX, blockY + 85, { width: signatureWidth });
+
+    y = blockY + blockHeight + 45;
+    doc.moveTo(51, y).lineTo(544, y).strokeColor('#cccccc').lineWidth(0.7).stroke();
+    doc.font('Helvetica').fontSize(8.25).fillColor('#666666')
+      .text('Riiroow Apartment Management — Residential Lease Agreement', 51, y + 10, {
+        width: pageWidth,
+        align: 'center',
+        lineBreak: false,
+      });
+
+    y += 45;
+    if (y > 650) {
+      doc.addPage();
+      y = 51;
+    }
+    doc.moveTo(51, y).lineTo(544, y).strokeColor('#cccccc').lineWidth(0.7).stroke();
+    doc.font('Helvetica-Bold').fontSize(12.75).fillColor('#222222')
+      .text('Lease Document Archive', 51, y + 12, { width: pageWidth, align: 'center' });
+    doc.font('Helvetica').fontSize(8.25).fillColor('#555555')
+      .text('Scan this code to view scanned documents attached to this specific lease.', 65, y + 33, {
+        width: pageWidth - 28,
+        align: 'center',
+      });
+    if (qrBuffer) {
+      doc.image(qrBuffer, 51, y + 54, { fit: [120, 120], align: 'center' });
+    }
+
     const pageRange = doc.bufferedPageRange();
     for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex += 1) {
       doc.switchToPage(pageIndex);
       doc.font('Helvetica').fontSize(8).fillColor('#777777')
-        .text(`Page ${pageIndex + 1} of ${pageRange.count}`, 54, 775, { width: 487, align: 'right', lineBreak: false });
+        .text('Page ' + (pageIndex + 1) + ' of ' + pageRange.count, 51, 775, {
+          width: 493,
+          align: 'right',
+          lineBreak: false,
+        });
     }
     doc.end();
   });
