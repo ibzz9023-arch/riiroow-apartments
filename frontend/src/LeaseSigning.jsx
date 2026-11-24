@@ -10,6 +10,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [hasInk, setHasInk] = useState(false);
   const canvasRef = useRef(null);
   const strokesRef = useRef([]);
   const activeStrokeRef = useRef(null);
@@ -99,17 +100,20 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
     strokesRef.current.push(activeStrokeRef.current);
     activeStrokeRef.current = null;
     drawingRef.current = false;
+    setHasInk(true);
   };
 
   const clearSignature = () => {
     strokesRef.current = [];
     activeStrokeRef.current = null;
     drawingRef.current = false;
+    setHasInk(false);
     drawStrokes();
   };
 
   const undoStroke = () => {
     strokesRef.current.pop();
+    setHasInk(strokesRef.current.length > 0);
     drawStrokes();
   };
 
@@ -249,7 +253,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
           </div>
           <p className="muted">Use Apple Pencil or your finger to write naturally. Your signature is captured as handwritten pen strokes.</p>
           <div className="form-actions">
-            <button className="small-btn" type="button" onClick={undoStroke} disabled={!strokesRef.current.length || saving}>Undo</button>
+            <button className="small-btn" type="button" onClick={undoStroke} disabled={!hasInk || saving}>Undo</button>
             <button className="small-btn" type="button" onClick={clearSignature} disabled={saving}>Clear</button>
           </div>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', margin: '12px 0' }}>
@@ -260,7 +264,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted }) {
                 : 'I confirm that I am the authorized manager and approve this lease for signing.'}
             </span>
           </label>
-          <button className="primary-btn" type="button" onClick={saveSignature} disabled={!confirmed || saving || !strokesRef.current.length}>
+          <button className="primary-btn" type="button" onClick={saveSignature} disabled={!confirmed || saving || !hasInk}>
             {saving ? 'Saving signature…' : signerType === 'tenant' ? 'Confirm tenant signature' : 'Confirm manager signature'}
           </button>
         </div>
