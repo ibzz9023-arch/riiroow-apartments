@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/smart-lease-signing
+      - deploy/smart-lease-signing-main
   pull_request:
     branches:
       - main
