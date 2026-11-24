@@ -436,7 +436,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
           </label>
           {isTenantFlow ? (
             <div className="form-actions" style={{ marginBottom: '10px' }}>
-              <button className={signatureMethod === 'draw' ? 'primary-btn' : 'small-btn'} type="button" onClick={() => { setSignatureMethod('draw'); setError(''); }}>Draw signature</button>
+              <button className={signatureMethod === 'draw' ? 'primary-btn' : 'small-btn'} type="button" onClick={() => { clearSignature(); setSignatureMethod('draw'); setError(''); }}>Draw signature</button>
               <button className={signatureMethod === 'photo' ? 'primary-btn' : 'small-btn'} type="button" onClick={() => { setSignatureMethod('photo'); clearSignature(); setError(''); }}>Upload signed paper photo</button>
             </div>
           ) : null}
