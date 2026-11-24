@@ -1299,6 +1299,15 @@ app.patch('/api/approval-requests/:id', requireRoles('Admin'), async (req, res) 
       action: req.body?.action,
       reviewerId: req.auth.sub,
       reviewReason: req.body?.reviewReason,
+      onApprove: async ({ requestType, details, reason }) => {
+        if (requestType === 'lease_termination') {
+          const leaseId = String(details?.leaseId || '').trim();
+          if (!leaseId) {
+            throw Object.assign(new Error('This lease-termination request is missing its lease ID.'), { statusCode: 400 });
+          }
+          await terminateLease(leaseId, `Approved lease termination: ${reason}`);
+        }
+      },
     });
     return res.json(item);
   } catch (error) {
