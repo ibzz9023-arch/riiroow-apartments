@@ -274,6 +274,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
             <div className="form-grid" style={{ marginTop: '10px' }}>
               <div><span className="muted">Tenant</span><p>{displayLease.tenantName || displayLease.tenant_name || session.tenantName || '—'}</p></div>
               <div><span className="muted">Unit</span><p>{displayLease.unitNumber ?? displayLease.unit_number ?? '—'}</p></div>
+              <div><span className="muted">Lease created</span><p>{displayLease.createdAt ? new Date(displayLease.createdAt).toLocaleDateString() : '—'}</p></div>
               <div><span className="muted">Lease starts</span><p>{displayLease.startDate || displayLease.start_date || '—'}</p></div>
               <div><span className="muted">Lease ends</span><p>{displayLease.endDate || displayLease.end_date || '—'}</p></div>
               <div><span className="muted">Monthly rent</span><p>{displayLease.monthlyRent ?? displayLease.monthly_rent ?? '—'}</p></div>
