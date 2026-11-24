@@ -72,7 +72,7 @@ test('decodeSignaturePng rejects excessive image dimensions', () => {
   assert.throws(() => decodeSignaturePng(input), /invalid or exceeds 2 MB/);
 });
 
-test('createSignedLeasePdf generates a readable PDF with both signatures and archive QR', async () => {
+test('createSignedLeasePdf generates an A4 PDF with both handwritten signatures', async () => {
   const signature = validPng();
   const pdf = await createSignedLeasePdf({
     snapshot: {
