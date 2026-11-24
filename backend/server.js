@@ -18,6 +18,7 @@ import {
 } from './src/moveOutRequests.js';
 import { financialRouter } from './src/financialRoutes.js';
 import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigningRoutes.js';
+import { leasePrintRouter } from './src/leasePrintRoutes.js';
 import {
   submitApprovalRequest,
   listApprovalRequests,
@@ -94,6 +95,7 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+app.use('/api/leases', leasePrintRouter);
 app.use('/api/leases', leaseSigningRouter);
 app.use('/api/public/qr', tenantLeaseSigningRouter);
 app.use('/api/financial', financialRouter);
