@@ -225,6 +225,12 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
         <p role="status">Waiting for the tenant to review and sign using their PIN-verified unit QR portal.</p>
       ) : null}
 
+      {!loading && session?.status === 'document_pending' && isTenantFlow ? (
+        <div role="status" className="empty-state">
+          <h4>Both signatures received</h4>
+          <p>Your signature and the manager’s signature have been saved. Management is completing the final PDF archive.</p>
+        </div>
+      ) : null}
       {!loading && session?.status === 'document_pending' && !isTenantFlow ? (
         <div>
           <p>Both signatures are saved. The final PDF still needs to be generated or uploaded.</p>
