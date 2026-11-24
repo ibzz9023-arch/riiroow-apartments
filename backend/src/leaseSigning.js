@@ -84,7 +84,7 @@ const addField = (doc, label, value) => {
   doc.moveDown(0.7);
 };
 
-export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
+export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, tenantPhoto }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, info: {
       Title: 'Riiroow Signed Lease Agreement',
@@ -143,11 +143,5 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
     doc.text('Each signing date above is recorded independently by the Riiroow server and displayed in East Africa Time (EAT).');
-    if (doc.y > 560) doc.addPage();
-    doc.moveDown(1.5);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text('Scan this QR code to view this signed lease and other documents attached to this lease.');
-    doc.moveDown(0.5);
-    doc.image(qrBuffer, { width: 112, height: 112, align: 'center' });
     doc.end();
   });
