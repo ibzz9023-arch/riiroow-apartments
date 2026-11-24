@@ -57,7 +57,7 @@ import {
   requireRoles,
 } from './src/authSession.js';
 import { financialRouter } from './src/financialRoutes.js';
-import { leaseSigningRouter } from './src/leaseSigningRoutes.js';
+import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigningRoutes.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -89,6 +89,7 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 app.use('/api/leases', leaseSigningRouter);
+app.use('/api/public/qr', tenantLeaseSigningRouter);
 app.use('/api/public/qr', leaseSigningRouter);
 
 const QR_MEDIA_BUCKET = 'maintenance-evidence';
