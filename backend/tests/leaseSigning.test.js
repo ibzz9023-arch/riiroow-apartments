@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { createSignedLeasePdf, decodeSignaturePng, decodeSignatureSourceImage, hashLeaseSnapshot } from '../src/leaseSigning.js';
+import { createLeasePdf } from '../src/leasePdfTemplate.js';
 
 
 const crc32 = (buffer) => {
@@ -111,6 +112,39 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
   });
   assert.ok(pdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
   assert.ok(pdf.length > 1000);
+});
+
+
+test('unsigned and signed lease PDFs use the same page layout and pagination', async () => {
+  const signature = validPng();
+  const snapshot = {
+    id: 'lease-layout-test',
+    unit_number: 101,
+    tenant_name: 'Layout Test Tenant',
+    tenant_phone: '+252 600000000',
+    tenant_email: 'tenant@example.test',
+    start_date: '2026-12-01',
+    end_date: '2027-11-30',
+    monthly_rent: 500,
+    security_deposit: 500,
+    status: 'Active',
+    notes: 'The same lease notes must occupy the same area before and after signing.',
+  };
+  const common = { snapshot, qrBuffer: signature };
+  const unsignedPdf = await createLeasePdf(common);
+  const signedPdf = await createLeasePdf({
+    ...common,
+    tenantSignature: signature,
+    managerSignature: signature,
+    tenantSignedAt: '2026-11-24T08:00:00.000Z',
+    managerSignedAt: '2026-11-25T09:30:00.000Z',
+    tenantName: 'Layout Test Tenant',
+    managerName: 'Layout Test Manager',
+  });
+  const countPages = (pdf) => (pdf.toString('latin1').match(/\\/Type\\s*\\/Page\\b/g) || []).length;
+  assert.equal(countPages(signedPdf), countPages(unsignedPdf));
+  assert.ok(unsignedPdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
+  assert.ok(signedPdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
 });
 
 test('decodeSignatureSourceImage accepts a JPEG source photograph', () => {
