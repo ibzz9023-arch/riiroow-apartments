@@ -135,7 +135,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(tenantName, leftX, signatureY + 112, { width: signatureWidth });
     doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(tenantSignedAt)} EAT`, leftX, signatureY + 128, { width: signatureWidth });
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#171717').text(managerName, rightX, signatureY + 112, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(managerSignedAt)} UTC`, rightX, signatureY + 128, { width: signatureWidth });
+    doc.font('Helvetica').fontSize(8).fillColor('#555555').text(`Signed: ${formatSigningDate(managerSignedAt)} EAT`, rightX, signatureY + 128, { width: signatureWidth });
 
     doc.moveTo(leftX, signatureY + 158).lineTo(leftX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
     doc.moveTo(rightX, signatureY + 158).lineTo(rightX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
