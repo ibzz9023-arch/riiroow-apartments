@@ -57,6 +57,7 @@ import {
   requireRoles,
 } from './src/authSession.js';
 import { financialRouter } from './src/financialRoutes.js';
+import { leaseSigningRouter } from './src/leaseSigningRoutes.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -87,6 +88,7 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json());
+app.use('/api/leases', leaseSigningRouter);
 
 const QR_MEDIA_BUCKET = 'maintenance-evidence';
 const QR_MEDIA_LIMITS = {
@@ -361,6 +363,7 @@ const signLeaseDocument = async (row) => {
     originalName: row.original_name,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),
+    documentType: row.document_type || 'manual',
     createdAt: row.created_at,
     previewUrl: previewData.signedUrl,
     downloadUrl: downloadData.signedUrl,
@@ -742,7 +745,7 @@ app.get('/api/public/lease-documents/:token', async (req, res) => {
 
     const { data: rows, error: documentsError } = await supabaseServiceRole
       .from('lease_documents')
-      .select('id, original_name, mime_type, file_size, created_at, storage_path')
+      .select('id, original_name, mime_type, file_size, document_type, created_at, storage_path')
       .eq('lease_id', access.lease_id)
       .order('created_at', { ascending: false });
     if (documentsError) throw documentsError;
@@ -855,6 +858,7 @@ app.post(
           storage_path: storagePath,
           mime_type: detected.mimeType,
           file_size: file.size,
+          document_type: 'manual',
           created_by: req.auth.sub,
         });
       }
