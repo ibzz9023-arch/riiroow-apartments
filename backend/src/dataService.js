@@ -564,6 +564,8 @@ export const updateLease = async (id, payload = {}) => {
 };
 
 export const terminateLease = async (id, note = '') => {
+  const terminationNote = String(note || '').trim();
+
   if (!validUuidPattern.test(String(id))) {
     const state = loadData();
     const leases = state.leases || [];
@@ -574,36 +576,60 @@ export const terminateLease = async (id, note = '') => {
     }
 
     const existing = toLegacyLease(leases[index]);
-    const terminationNote = String(note || '').trim();
     const existingNotes = String(existing.notes || '').trim();
-    const notes = [existingNotes, terminationNote].filter(Boolean).join(' ');
+    const notes = terminationNote && !existingNotes.includes(terminationNote)
+      ? [existingNotes, terminationNote].filter(Boolean).join(' ')
+      : existingNotes;
 
-    leases[index] = {
-      ...leases[index],
-      status: 'Terminated',
-      notes,
-    };
-
+    leases[index] = { ...leases[index], status: 'Terminated', notes };
     saveData(state);
     return toLegacyLease(leases[index]);
   }
 
-  const existing = (await getLeases()).find((lease) => String(lease.id) === String(id));
+  if (supabase) {
+    // This is an approval-controlled financial/lease action: never fall back
+    // to process-local storage if the production database update fails.
+    const { data: current, error: readError } = await supabase
+      .from('leases')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!current) throw new Error('Record not found.');
 
-  if (!existing) {
-    throw new Error('Record not found.');
+    const existing = toLegacyLease(current);
+    const existingNotes = String(existing.notes || '').trim();
+    const notes = terminationNote && !existingNotes.includes(terminationNote)
+      ? [existingNotes, terminationNote].filter(Boolean).join(' ')
+      : existingNotes;
+
+    if (String(existing.status || '').toLowerCase() === 'terminated') {
+      return existing;
+    }
+
+    const { data, error } = await supabase
+      .from('leases')
+      .update({ status: 'Terminated', notes })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return toLegacyLease(data);
   }
 
-  const terminationNote = String(note || '').trim();
+  const state = loadData();
+  const leases = state.leases || [];
+  const index = leases.findIndex((entry) => String(entry.id) === String(id));
+  if (index === -1) throw new Error('Record not found.');
+
+  const existing = toLegacyLease(leases[index]);
   const existingNotes = String(existing.notes || '').trim();
-  const notes = [existingNotes, terminationNote].filter(Boolean).join(' ');
-
-  const result = await updateEntity('leases', id, {
-    status: 'Terminated',
-    notes,
-  });
-
-  return toLegacyLease(result);
+  const notes = terminationNote && !existingNotes.includes(terminationNote)
+    ? [existingNotes, terminationNote].filter(Boolean).join(' ')
+    : existingNotes;
+  leases[index] = { ...leases[index], status: 'Terminated', notes };
+  saveData(state);
+  return toLegacyLease(leases[index]);
 };
 
 const applyLeaseRuntimeStatus = (lease) => {
