@@ -62,6 +62,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     addField(doc, 'Lease status at signing', snapshot.status);
     if (snapshot.notes) addField(doc, 'Additional terms / notes', snapshot.notes);
 
+    if (doc.y > 450) doc.addPage();
     doc.moveDown(0.6);
     doc.font('Helvetica-Bold').fontSize(15).fillColor('#171717').text('Signatures');
     doc.moveDown(0.8);
