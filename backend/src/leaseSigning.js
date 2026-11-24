@@ -3,25 +3,6 @@ import PDFDocument from 'pdfkit';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
 
-export const SIGNATURE_SOURCE_MAX_BYTES = 1536 * 1024;
-
-export const decodeSignatureSourceImage = (dataUrl) => {
-  const match = /^data:image\/(jpeg|png);base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl || ''));
-  if (!match) throw Object.assign(new Error('Upload a JPEG or PNG photograph of the signed paper.'), { statusCode: 400 });
-  const buffer = Buffer.from(match[2], 'base64');
-  const isJpeg = match[1] === 'jpeg'
-    && buffer.length >= 3
-    && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const isPng = match[1] === 'png'
-    && buffer.length >= 8
-    && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  if (!buffer.length || buffer.length > SIGNATURE_SOURCE_MAX_BYTES || buffer.toString('base64') !== match[2] || (!isJpeg && !isPng)) {
-    throw Object.assign(new Error('The source photograph is invalid or exceeds 1.5 MB. Please upload a smaller JPEG or PNG.'), { statusCode: 400 });
-  }
-  return { buffer, mimeType: isJpeg ? 'image/jpeg' : 'image/png', extension: isJpeg ? 'jpg' : 'png' };
-};
-
-
 const pngCrc32 = (buffer) => {
   let crc = 0xffffffff;
   for (const byte of buffer) {
