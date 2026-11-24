@@ -106,7 +106,7 @@ const finalizeSession = async (session) => {
   });
   if (uploadError) throw uploadError;
 
-  const documentId = session.final_document_id || crypto.randomUUID();
+  let documentId = session.final_document_id || crypto.randomUUID();
   const documentHash = crypto.createHash('sha256').update(pdf).digest('hex');
   if (!session.final_document_id) {
     const { data: existingDocument, error: existingDocumentError } = await supabaseServiceRole
