@@ -97,7 +97,7 @@ test('database review errors preserve safe HTTP status mapping', async () => {
 
 test('atomic approval migration locks each request and handles every supported action type', () => {
   const migration = readFileSync(
-    new URL('../migrations/202611240001_atomic_approval_actions.sql', import.meta.url),
+    new URL('../migrations/202611240003_atomic_approval_actions.sql', import.meta.url),
     'utf8'
   );
   assert.match(migration, /FROM public\.approval_requests\s+WHERE id = p_request_id\s+FOR UPDATE/i);
