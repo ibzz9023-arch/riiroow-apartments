@@ -752,7 +752,13 @@ app.get('/api/public/lease-documents/:token', async (req, res) => {
     if (documentsError) throw documentsError;
 
     const documents = await Promise.all((rows || []).map(signLeaseDocument));
-    return res.json({ documents });
+    const { data: lease, error: leaseError } = await supabaseServiceRole
+      .from('leases')
+      .select('unit_number')
+      .eq('id', access.lease_id)
+      .maybeSingle();
+    if (leaseError) throw leaseError;
+    return res.json({ documents, unitNumber: lease?.unit_number ?? null });
   } catch (error) {
     console.error('Public lease documents fetch error:', error?.message || error);
     return res.status(500).json({
