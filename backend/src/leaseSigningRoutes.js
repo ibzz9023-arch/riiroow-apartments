@@ -521,6 +521,13 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
         return res.json({ session: await finalizeSession(updated, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
       } catch (finalizeError) {
         console.error('Signed lease PDF generation failed:', finalizeError?.message || finalizeError);
+        await recordSigningEvent({
+          leaseId: req.params.id,
+          sessionId: updated.id,
+          eventType: 'signed_pdf_generation_failed',
+          actorType: 'system',
+          metadata: { reason: String(finalizeError?.message || 'Unknown PDF generation error').slice(0, 300) },
+        });
         return res.status(202).json({
           session: sessionResponse(updated),
           warning: 'Both signatures were saved. The final PDF could not be uploaded yet; retry document generation.',
