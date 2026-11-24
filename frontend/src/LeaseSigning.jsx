@@ -239,6 +239,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
           <h4>Tenant signature received</h4>
           <p>Your handwritten signature has been securely recorded. The manager must now sign to complete the lease.</p>
           <p className="muted">Tenant signed: {session.tenantSignedAt ? new Date(session.tenantSignedAt).toLocaleString() : '—'}</p>
+          <button className="small-btn" type="button" onClick={refreshSigningStatus} disabled={loading}>Refresh status</button>
         </div>
       ) : null}
       {!loading && !isTenantFlow && session?.status === 'awaiting_tenant' ? (
@@ -252,6 +253,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
         <div role="status" className="empty-state">
           <h4>Both signatures received</h4>
           <p>Your signature and the manager’s signature have been saved. Management is completing the final PDF archive.</p>
+          <button className="small-btn" type="button" onClick={refreshSigningStatus} disabled={loading}>Refresh status</button>
         </div>
       ) : null}
       {!loading && session?.status === 'document_pending' && !isTenantFlow ? (
