@@ -3,6 +3,7 @@ import { supabase, hasSupabase } from './supabaseClient';
 import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
+import LeaseSigning from './LeaseSigning.jsx';
 
 const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
@@ -464,11 +465,13 @@ class AppErrorBoundary extends React.Component {
 
 function LeaseDocumentsPublicPage({ accessToken }) {
   const [documents, setDocuments] = useState([]);
+  const [unitNumber, setUnitNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
+    setUnitNumber('');
     const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
     const endpoint = `${apiBaseUrl}/api/public/lease-documents/${encodeURIComponent(accessToken)}`;
 
@@ -486,6 +489,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
       .then((data) => {
         if (!active) return;
         setDocuments(Array.isArray(data.documents) ? data.documents : []);
+        setUnitNumber(data.unitNumber ? String(data.unitNumber) : '');
         setError('');
       })
       .catch((fetchError) => {
@@ -520,7 +524,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
           </div>
         </div>
         <div className="auth-intro">
-          Scanned documents shared for this lease.
+          Your signed lease and supporting documents shared for this lease.
         </div>
 
         {loading ? <p role="status">Loading documents…</p> : null}
@@ -532,24 +536,51 @@ function LeaseDocumentsPublicPage({ accessToken }) {
 
         {!loading && !error && documents.length ? (
           <div className="stacked-sections">
-            {documents.map((document) => (
-              <section className="panel" key={document.id}>
-                <strong>{document.originalName}</strong>
-                <p className="muted">
-                  {document.mimeType} · {formatSize(document.fileSize)}
-                  {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
-                </p>
-                <div className="form-actions">
-                  <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">
-                    Preview
-                  </a>
-                  <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">
-                    Download
-                  </a>
-                </div>
-              </section>
-            ))}
+            {documents.some((document) => document.documentType === 'signed_lease') ? (
+              <>
+                <h3>Automatically generated signed lease</h3>
+                {documents.filter((document) => document.documentType === 'signed_lease').map((document) => (
+                  <section className="panel" key={document.id}>
+                    <strong>{document.originalName}</strong>
+                    <p className="muted">Signed lease agreement · {formatSize(document.fileSize)}</p>
+                    <p className="muted">{document.createdAt ? `Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}</p>
+                    <div className="form-actions">
+                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
+                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                    </div>
+                  </section>
+                ))}
+              </>
+            ) : null}
+            {documents.some((document) => document.documentType !== 'signed_lease') ? (
+              <>
+                <h3>Other lease documents</h3>
+                {documents.filter((document) => document.documentType !== 'signed_lease').map((document) => (
+                  <section className="panel" key={document.id}>
+                    <strong>{document.originalName}</strong>
+                    <p className="muted">
+                      {document.mimeType} · {formatSize(document.fileSize)}
+                      {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
+                    </p>
+                    <div className="form-actions">
+                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
+                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                    </div>
+                  </section>
+                ))}
+              </>
+            ) : null}
           </div>
+        ) : null}
+
+        {unitNumber && !documents.some((document) => document.documentType === 'signed_lease') ? (
+          <section className="panel" style={{ marginTop: '20px' }}>
+            <h3>Need to sign this lease?</h3>
+            <p className="muted">Open the tenant portal and verify your PIN to review and sign this lease using Apple Pencil or your finger.</p>
+            <a className="primary-btn" href={`${import.meta.env.BASE_URL}qr/${encodeURIComponent(unitNumber)}`}>
+              Review &amp; Sign Lease
+            </a>
+          </section>
         ) : null}
 
         <p className="muted" style={{ marginTop: '20px' }}>
@@ -802,7 +833,7 @@ const [user, setUser] = useState(null);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const isTenantQrAction = /^\/api\/public\/qr\/[^/]+\/(maintenance|payment-notification|move-out-request)$/.test(path);
+      const isTenantQrAction = /^\/api\/public\/qr\/[^/]+\/(maintenance|payment-notification|move-out-request|lease-signing)(?:\/|$)/.test(path);
       if ((response.status === 401 || response.status === 403) && isTenantQrAction) {
         setQrTenantToken('');
         setQrPaymentVerified(false);
@@ -3013,7 +3044,28 @@ const handleLogin = async (event) => {
               >
                 {qrT.moveOutRequest}
               </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => setQrActiveService('lease-signing')}
+              >
+                Review &amp; Sign Lease
+              </button>
             </div>
+          ) : null}
+
+          {qrTenantToken && qrActiveService === 'lease-signing' ? (
+            <section className="panel" style={{ marginTop: '16px' }}>
+              <div className="panel-header">
+                <h3>Review &amp; Sign Lease</h3>
+                <button className="small-btn" type="button" onClick={() => setQrActiveService('')}>Back</button>
+              </div>
+              <LeaseSigning
+                requestJson={requestJson}
+                tenantAccessToken={qrTenantToken}
+                unitNumber={qrUnitNumber}
+              />
+            </section>
           ) : null}
 
           {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceSuccess ? (
@@ -4472,6 +4524,13 @@ const handleLogin = async (event) => {
 
                     {leaseDocumentsError ? <p className="error-text" role="alert">{leaseDocumentsError}</p> : null}
                     {leaseDocumentsLoading ? <p role="status">Loading lease documents…</p> : null}
+                    {['admin', 'manager'].includes(role) ? (
+                      <LeaseSigning
+                        lease={selectedLeaseForDocuments}
+                        requestJson={requestJson}
+                        onCompleted={() => refreshLeaseDocuments(selectedLeaseForDocuments.id)}
+                      />
+                    ) : null}
 
                     {['admin', 'manager'].includes(role) ? (
                       <form className="crud-form" onSubmit={handleLeaseDocumentsUpload}>
@@ -4496,21 +4555,42 @@ const handleLogin = async (event) => {
                     ) : null}
 
                     <div className="stacked-sections">
-                      {leaseDocuments.map((document) => (
-                        <div className="panel" key={document.id}>
-                          <strong>{document.originalName}</strong>
-                          <p className="muted">
-                            {document.mimeType} · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
-                            {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
-                          </p>
-                          <div className="form-actions">
-                            <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
-                            <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
-                          </div>
-                        </div>
-                      ))}
+                      {leaseDocuments.some((document) => document.documentType === 'signed_lease') ? (
+                        <>
+                          <h4>Automatically generated signed lease</h4>
+                          {leaseDocuments.filter((document) => document.documentType === 'signed_lease').map((document) => (
+                            <div className="panel" key={document.id}>
+                              <strong>{document.originalName}</strong>
+                              <p className="muted">Signed lease agreement · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB</p>
+                              <p className="muted">{document.createdAt ? `Added ${formatDateTime(document.createdAt)}` : ''}</p>
+                              <div className="form-actions">
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
+                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
+                      {leaseDocuments.some((document) => document.documentType !== 'signed_lease') ? (
+                        <>
+                          <h4>Manually uploaded documents</h4>
+                          {leaseDocuments.filter((document) => document.documentType !== 'signed_lease').map((document) => (
+                            <div className="panel" key={document.id}>
+                              <strong>{document.originalName}</strong>
+                              <p className="muted">
+                                {document.mimeType} · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
+                                {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
+                              </p>
+                              <div className="form-actions">
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
+                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
                       {!leaseDocumentsLoading && !leaseDocumentsError && !leaseDocuments.length ? (
-                        <EmptyState title="No scanned documents" message="Upload lease scans, signed pages, or supporting documents to keep them with this lease." />
+                        <EmptyState title="No lease documents" message="The signed lease and manually uploaded supporting documents will appear here." />
                       ) : null}
                     </div>
 
