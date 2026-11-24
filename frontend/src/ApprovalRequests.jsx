@@ -25,6 +25,17 @@ export default function ApprovalRequests({ role, token, onShare }) {
     details: '',
   });
   const [reviewReasons, setReviewReasons] = useState({});
+  const [expenseOptions, setExpenseOptions] = useState({ properties: [], expenseCategories: [] });
+  const [expenseDetails, setExpenseDetails] = useState({
+    propertyId: '',
+    categoryId: '',
+    amount: '',
+    description: '',
+    expenseOn: '',
+    status: 'paid',
+    paidOn: '',
+    paymentMethod: '',
+  });
 
   const request = useCallback(async (path, options = {}) => {
     const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -56,6 +67,22 @@ export default function ApprovalRequests({ role, token, onShare }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  useEffect(() => {
+    if (isAdmin) return undefined;
+    let active = true;
+    request('/api/approval-requests/options')
+      .then((data) => {
+        if (active) setExpenseOptions({
+          properties: Array.isArray(data.properties) ? data.properties : [],
+          expenseCategories: Array.isArray(data.expenseCategories) ? data.expenseCategories : [],
+        });
+      })
+      .catch((err) => {
+        if (active) setError(err.message || 'Unable to load expense request options.');
+      });
+    return () => { active = false; };
+  }, [isAdmin, request]);
+
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
@@ -64,21 +91,22 @@ export default function ApprovalRequests({ role, token, onShare }) {
     try {
       let details = form.details.trim() ? { description: form.details.trim() } : {};
       if (form.requestType === 'exceptional_expense') {
-        try {
-          details = JSON.parse(form.details);
-        } catch {
-          throw new Error('Enter exceptional-expense details as valid JSON.');
-        }
-        if (!details || typeof details !== 'object' || Array.isArray(details)) {
-          throw new Error('Exceptional-expense details must be a JSON object.');
-        }
-        const requiredFields = ['propertyId', 'categoryId', 'amount', 'description', 'expenseOn', 'status'];
+        details = {
+          ...expenseDetails,
+          amount: Number(expenseDetails.amount),
+          paymentMethod: expenseDetails.paymentMethod || null,
+          paidOn: expenseDetails.status === 'paid' ? expenseDetails.paidOn : null,
+        };
+        const requiredFields = ['propertyId', 'categoryId', 'amount', 'description', 'expenseOn'];
         const missingFields = requiredFields.filter((field) => details[field] === undefined || details[field] === null || String(details[field]).trim() === '');
         if (missingFields.length) {
-          throw new Error(`Exceptional-expense details are missing: ${missingFields.join(', ')}.`);
+          throw new Error(`Complete the exceptional-expense fields: ${missingFields.join(', ')}.`);
         }
-        if (String(details.status).toLowerCase() === 'paid' && !details.paidOn) {
-          throw new Error('A paid exceptional expense must include paidOn (YYYY-MM-DD).');
+        if (!Number.isFinite(details.amount) || details.amount <= 0) {
+          throw new Error('Enter an exceptional-expense amount greater than zero.');
+        }
+        if (details.status === 'paid' && !details.paidOn) {
+          throw new Error('Enter the actual payment date for a paid expense.');
         }
       }
       await request('/api/approval-requests', {
@@ -91,6 +119,10 @@ export default function ApprovalRequests({ role, token, onShare }) {
         }),
       });
       setForm({ requestType: 'rent_change', title: '', reason: '', details: '' });
+      setExpenseDetails({
+        propertyId: '', categoryId: '', amount: '', description: '',
+        expenseOn: '', status: 'paid', paidOn: '', paymentMethod: '',
+      });
       setNotice('Approval request submitted to Admin.');
       await refresh();
     } catch (err) {
@@ -153,22 +185,57 @@ export default function ApprovalRequests({ role, token, onShare }) {
                 Reason (required)
                 <textarea rows="3" maxLength="2000" required value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} />
               </label>
-              <label className="full-span">
-                {form.requestType === 'exceptional_expense' ? 'Expense details (required JSON)' : 'Additional details (optional)'}
-                <textarea
-                  rows="5"
-                  maxLength="4000"
-                  required={form.requestType === 'exceptional_expense'}
-                  value={form.details}
-                  onChange={(event) => setForm((current) => ({ ...current, details: event.target.value }))}
-                  placeholder={form.requestType === 'exceptional_expense'
-                    ? '{ "propertyId": "PROPERTY_UUID", "categoryId": "CATEGORY_UUID", "amount": 125.00, "description": "Emergency repair", "expenseOn": "2026-11-24", "status": "paid", "paidOn": "2026-11-24", "paymentMethod": "Cash" }'
-                    : 'Include amounts, tenant/unit, dates, or supporting context.'}
-                />
-                {form.requestType === 'exceptional_expense'
-                  ? <small>Use the real property and active expense-category IDs. For unpaid expenses set status to "unpaid" and omit paidOn. Approval records the expense; it does not transfer money.</small>
-                  : null}
-              </label>
+              {form.requestType === 'exceptional_expense' ? (
+                <>
+                  <label>Property
+                    <select value={expenseDetails.propertyId} onChange={(event) => setExpenseDetails((current) => ({ ...current, propertyId: event.target.value }))} required>
+                      <option value="">Select property</option>
+                      {expenseOptions.properties.map((property) => <option key={property.id} value={property.id}>{property.name || property.id}</option>)}
+                    </select>
+                  </label>
+                  <label>Expense category
+                    <select value={expenseDetails.categoryId} onChange={(event) => setExpenseDetails((current) => ({ ...current, categoryId: event.target.value }))} required>
+                      <option value="">Select category</option>
+                      {expenseOptions.expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </label>
+                  <label>Amount (USD)
+                    <input type="number" min="0.01" step="0.01" value={expenseDetails.amount} onChange={(event) => setExpenseDetails((current) => ({ ...current, amount: event.target.value }))} required />
+                  </label>
+                  <label>Expense date
+                    <input type="date" value={expenseDetails.expenseOn} onChange={(event) => setExpenseDetails((current) => ({ ...current, expenseOn: event.target.value }))} required />
+                  </label>
+                  <label className="full-span">Description
+                    <input maxLength="2000" value={expenseDetails.description} onChange={(event) => setExpenseDetails((current) => ({ ...current, description: event.target.value }))} required />
+                  </label>
+                  <label>Expense status
+                    <select value={expenseDetails.status} onChange={(event) => setExpenseDetails((current) => ({ ...current, status: event.target.value, paidOn: event.target.value === 'paid' ? current.paidOn : '' }))}>
+                      <option value="paid">Paid</option>
+                      <option value="unpaid">Unpaid</option>
+                    </select>
+                  </label>
+                  {expenseDetails.status === 'paid' ? (
+                    <label>Actual payment date
+                      <input type="date" value={expenseDetails.paidOn} onChange={(event) => setExpenseDetails((current) => ({ ...current, paidOn: event.target.value }))} required />
+                    </label>
+                  ) : null}
+                  <label>Payment method (optional)
+                    <select value={expenseDetails.paymentMethod} onChange={(event) => setExpenseDetails((current) => ({ ...current, paymentMethod: event.target.value }))}>
+                      <option value="">Not specified</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Mobile Money">Mobile Money</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+                  <p className="muted full-span">Admin approval records the expense in Financial Management. It does not transfer money or confirm a cash payment.</p>
+                </>
+              ) : (
+                <label className="full-span">
+                  Additional details (optional)
+                  <textarea rows="3" maxLength="4000" value={form.details} onChange={(event) => setForm((current) => ({ ...current, details: event.target.value }))} placeholder="Include amounts, tenant/unit, dates, or supporting context." />
+                </label>
+              )}
             </div>
             <button type="submit" disabled={busy}>{busy ? 'Submitting...' : 'Submit for Admin approval'}</button>
           </form>
