@@ -92,7 +92,7 @@ const getLeaseAndTenant = async (leaseId) => {
   if (!lease) return null;
   const { data: tenant, error: tenantError } = await supabaseServiceRole
     .from('tenants')
-    .select('id, name, phone, email')
+    .select('id, name, phone, email, photo_storage_path')
     .eq('id', lease.tenant_id)
     .maybeSingle();
   if (tenantError) throw tenantError;
@@ -103,6 +103,7 @@ const getLeaseAndTenant = async (leaseId) => {
     tenant_name: tenant.name,
     tenant_phone: tenant.phone || '',
     tenant_email: tenant.email || '',
+    tenant_photo_storage_path: tenant.photo_storage_path || null,
     unit_id: lease.unit_id,
     unit_number: lease.unit_number,
     start_date: lease.start_date,
@@ -153,6 +154,22 @@ const finalizeSession = async (session, appOrigin) => {
     tenantImage.arrayBuffer().then((bytes) => Buffer.from(bytes)),
     managerImage.arrayBuffer().then((bytes) => Buffer.from(bytes)),
   ]);
+  let tenantPhoto = null;
+  if (session.lease_snapshot.tenant_photo_storage_path) {
+    try {
+      const { data: photo, error: photoError } = await supabaseServiceRole.storage
+        .from('tenant-photos')
+        .download(session.lease_snapshot.tenant_photo_storage_path);
+      if (!photoError && photo) {
+        const photoBuffer = Buffer.from(await photo.arrayBuffer());
+        const isJpeg = photoBuffer[0] === 0xff && photoBuffer[1] === 0xd8 && photoBuffer[2] === 0xff;
+        const isPng = photoBuffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        if (isJpeg || isPng) tenantPhoto = photoBuffer;
+      }
+    } catch (photoError) {
+      console.warn('Optional tenant photo could not be included in signed lease:', photoError?.message || photoError);
+    }
+  }
   const documentToken = await getOrCreateDocumentToken(session.lease_id, session.manager_signed_by);
   const publicDocumentUrl = `${String(appOrigin || '').replace(/\\/$/, '')}/lease-documents/${documentToken}`;
   const qrBuffer = await QRCode.toBuffer(publicDocumentUrl, {
@@ -169,6 +186,7 @@ const finalizeSession = async (session, appOrigin) => {
     managerSignedAt: session.manager_signed_at,
     tenantName: session.tenant_name,
     managerName: session.manager_name,
+    tenantPhoto,
     sessionId: session.id,
     qrBuffer,
   });
