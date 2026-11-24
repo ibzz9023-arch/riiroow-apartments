@@ -15,7 +15,7 @@ const pngCrc32 = (buffer) => {
 };
 
 export const decodeSignaturePng = (dataUrl) => {
-  const match = /^data:image\\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl || ''));
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl || ''));
   if (!match) throw Object.assign(new Error('Signature must be a PNG image.'), { statusCode: 400 });
   const buffer = Buffer.from(match[1], 'base64');
   const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
