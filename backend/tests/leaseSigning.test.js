@@ -39,12 +39,7 @@ const validPng = () => {
   ]);
 };
 
-const minimalPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from([0x00, 0x00, 0x00, 0x0d]),
-  Buffer.from('IHDR'),
-  Buffer.from([0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01]),
-]);
+const minimalPng = validPng();
 
 test('decodeSignaturePng accepts a PNG data URL', () => {
   const input = `data:image/png;base64,${minimalPng.toString('base64')}`;
