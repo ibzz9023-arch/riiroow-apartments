@@ -101,40 +101,150 @@ const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
+
+const PAGE = { width: 595.28, height: 841.89, margin: 51.02 };
+const LAYOUT = {
+  contentWidth: PAGE.width - PAGE.margin * 2,
+  logoWidth: 135,
+  logoHeight: 58.5,
+  photoWidth: 78,
+  photoHeight: 93,
+  columnGap: 26.25,
+  detailRowHeight: 27.375,
+  signatureGap: 22.5,
+  signatureHeight: 75,
+};
+
+const addPageIfNeeded = (doc, y, requiredHeight, bottom = 51) => {
+  if (y + requiredHeight <= PAGE.height - bottom) return y;
+  doc.addPage();
+  return PAGE.margin;
+};
+
 const addSectionHeading = (doc, title, y) => {
-  doc.font('Helvetica-Bold').fontSize(12.75).fillColor('#222222')
-    .text(title, 51, y, { width: 493, lineBreak: false });
-  doc.moveTo(51, y + 19).lineTo(544, y + 19).strokeColor('#bbbbbb').lineWidth(0.7).stroke();
-  return y + 27;
+  // Values are the original print CSS converted from CSS px to PDF points.
+  y += 18.75; // h2 margin-top: 25px
+  doc.font('Helvetica').fontSize(12.75).fillColor('#222222')
+    .text(title, PAGE.margin, y, {
+      width: LAYOUT.contentWidth,
+      lineBreak: false,
+      height: 19.125,
+    });
+  const ruleY = y + 23.625; // line box + 6px padding + border
+  doc.moveTo(PAGE.margin, ruleY)
+    .lineTo(PAGE.width - PAGE.margin, ruleY)
+    .strokeColor('#bbbbbb').lineWidth(0.75).stroke();
+  return ruleY + 9.75; // padding/border + h2 margin-bottom: 12px
 };
 
 const drawDetail = (doc, label, value, x, y, width) => {
   doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
-    .text(label + ':', x, y + 6, { continued: true });
+    .text(label + ':', x, y + 6, { continued: true, lineBreak: false });
   doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
-    .text(' ' + String(value || '—'), { width: width - 8 });
-  doc.moveTo(x, y + 25).lineTo(x + width, y + 25).strokeColor('#eeeeee').lineWidth(0.55).stroke();
+    .text(' ' + String(value ?? '—'), {
+      width: width - 8,
+      height: 14.625,
+      lineBreak: false,
+    });
+  doc.moveTo(x, y + LAYOUT.detailRowHeight - 0.75)
+    .lineTo(x + width, y + LAYOUT.detailRowHeight - 0.75)
+    .strokeColor('#eeeeee').lineWidth(0.75).stroke();
 };
 
 const drawDetailsGrid = (doc, fields, y) => {
-  const columnGap = 26;
-  const columnWidth = (493 - columnGap) / 2;
+  const columnWidth = (LAYOUT.contentWidth - LAYOUT.columnGap) / 2;
   fields.forEach((field, index) => {
     const column = index % 2;
     const row = Math.floor(index / 2);
-    drawDetail(doc, field[0], field[1], 51 + column * (columnWidth + columnGap), y + row * 31, columnWidth);
+    drawDetail(
+      doc,
+      field[0],
+      field[1],
+      PAGE.margin + column * (columnWidth + LAYOUT.columnGap),
+      y + row * LAYOUT.detailRowHeight,
+      columnWidth,
+    );
   });
-  return y + Math.ceil(fields.length / 2) * 31;
+  return y + Math.ceil(fields.length / 2) * LAYOUT.detailRowHeight;
 };
 
-export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
-  new Promise((resolve, reject) => {
-    // Keep the signed PDF on the same A4 page geometry and section order as
-    // the manager's browser-print lease. Signature images occupy the existing
-    // signature whitespace; they do not add layout height or move later text.
+const drawSignatureBlock = (doc, {
+  y,
+  tenantSignature,
+  managerSignature,
+  tenantName,
+  tenantSignedAt,
+  managerSignedAt,
+}) => {
+  const gap = LAYOUT.signatureGap;
+  const columnWidth = (LAYOUT.contentWidth - gap) / 2;
+  const leftX = PAGE.margin;
+  const rightX = leftX + columnWidth + gap;
+  const top = y + 41.25; // signatures margin-top: 55px
+  const blockBottom = top + LAYOUT.signatureHeight;
+
+  [leftX, rightX].forEach((x) => {
+    doc.moveTo(x, top).lineTo(x + columnWidth, top)
+      .strokeColor('#222222').lineWidth(0.75).stroke();
+  });
+
+  doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
+    .text('Tenant Signature', leftX, top + 6, { width: columnWidth, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
+    .text('Riiroow Apartment Management', rightX, top + 6, { width: columnWidth, lineBreak: false });
+
+  // Signatures are overlaid inside the blank line area of the original form.
+  // They never change the baseline of the printed name or date fields.
+  doc.image(tenantSignature, leftX, top + 17, {
+    fit: [Math.min(195, columnWidth - 8), 24],
+    align: 'left',
+    valign: 'center',
+  });
+  doc.image(managerSignature, rightX, top + 17, {
+    fit: [Math.min(195, columnWidth - 8), 24],
+    align: 'left',
+    valign: 'center',
+  });
+
+  doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
+    .text('Name: ' + String(tenantName || '—'), leftX, top + 44, {
+      width: columnWidth,
+      lineBreak: false,
+    });
+  doc.font('Helvetica').fontSize(8.25).fillColor('#222222')
+    .text('Date: ' + formatSigningDate(tenantSignedAt) + ' EAT', leftX, top + 62, {
+      width: columnWidth,
+      lineBreak: false,
+    });
+  doc.font('Helvetica').fontSize(8.25).fillColor('#222222')
+    .text('Date: ' + formatSigningDate(managerSignedAt) + ' EAT', rightX, top + 62, {
+      width: columnWidth,
+      lineBreak: false,
+    });
+  return blockBottom;
+};
+
+export const createSignedLeasePdf = ({
+  snapshot,
+  tenantSignature,
+  managerSignature,
+  tenantSignedAt,
+  managerSignedAt,
+  tenantName,
+  managerName,
+  sessionId,
+  qrBuffer,
+  tenantPhoto,
+}) => new Promise(async (resolve, reject) => {
+  try {
     const doc = new PDFDocument({
       size: 'A4',
-      margins: { top: 51, bottom: 51, left: 51, right: 51 },
+      margins: {
+        top: PAGE.margin,
+        bottom: PAGE.margin,
+        left: PAGE.margin,
+        right: PAGE.margin,
+      },
       bufferPages: true,
       info: {
         Title: 'Riiroow Signed Lease Agreement',
@@ -148,26 +258,56 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    const pageWidth = 493;
-    let y = 51;
+    let y = PAGE.margin;
 
-    // Header mirrors the unsigned print template's centered brand, title,
-    // lease reference, divider, and vertical spacing.
+    // Match the unsigned HTML/CSS header: fixed 180x78px logo frame,
+    // centered brand, subtitle, lease ID, 3px divider and 20px bottom gap.
+    const logoPath = new URL('../../frontend/public/riiroow-logo.png', import.meta.url);
+    const { readFile } = await import('node:fs/promises');
+    const logo = await readFile(logoPath);
+    doc.image(logo, (PAGE.width - LAYOUT.logoWidth) / 2, y, {
+      fit: [LAYOUT.logoWidth, LAYOUT.logoHeight],
+      align: 'center',
+      valign: 'center',
+    });
+    y += LAYOUT.logoHeight + 4.5;
     doc.font('Helvetica-Bold').fontSize(16.5).fillColor('#222222')
-      .text('RIIROOW APARTMENT', 51, y + 58, { width: pageWidth, align: 'center', lineBreak: false });
+      .text('RIIROOW APARTMENT', PAGE.margin, y, {
+        width: LAYOUT.contentWidth,
+        align: 'center',
+        lineBreak: false,
+      });
+    y += 28.5;
     doc.font('Helvetica-Bold').fontSize(13.5).fillColor('#222222')
-      .text('LEASE SUMMARY', 51, y + 82, { width: pageWidth, align: 'center', lineBreak: false });
+      .text('LEASE SUMMARY', PAGE.margin, y, {
+        width: LAYOUT.contentWidth,
+        align: 'center',
+        lineBreak: false,
+      });
+    y += 23.25;
     doc.font('Helvetica').fontSize(9).fillColor('#666666')
-      .text('Lease ID: ' + String(snapshot.id || '—'), 51, y + 105, { width: pageWidth, align: 'center', lineBreak: false });
-    doc.moveTo(51, y + 124).lineTo(544, y + 124).strokeColor('#222222').lineWidth(2.25).stroke();
-    y += 145;
+      .text('Lease ID: ' + String(snapshot.id || '—'), PAGE.margin, y, {
+        width: LAYOUT.contentWidth,
+        align: 'center',
+        lineBreak: false,
+      });
+    y += 23.25;
+    doc.moveTo(PAGE.margin, y).lineTo(PAGE.width - PAGE.margin, y)
+      .strokeColor('#222222').lineWidth(2.25).stroke();
+    y += 17.25; // header margin-bottom: 20px
 
-    if (tenantPhoto) {
-      doc.image(tenantPhoto, 51, y, { fit: [78, 93] });
-      y += 105;
-    }
-
+    // The original template places the tenant-information heading before
+    // the photo. The photo uses the same 104x124px CSS dimensions.
     y = addSectionHeading(doc, '1. Tenant Information', y);
+    if (tenantPhoto) {
+      y = addPageIfNeeded(doc, y, LAYOUT.photoHeight + 10.5);
+      doc.image(tenantPhoto, PAGE.margin, y, {
+        fit: [LAYOUT.photoWidth, LAYOUT.photoHeight],
+        align: 'left',
+        valign: 'center',
+      });
+      y += LAYOUT.photoHeight + 10.5; // photo wrapper bottom margin: 14px
+    }
     y = drawDetailsGrid(doc, [
       ['Tenant Name', snapshot.tenant_name || tenantName],
       ['Phone', snapshot.tenant_phone],
@@ -175,7 +315,6 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
       ['Unit Number', snapshot.unit_number ?? snapshot.unit_id],
     ], y);
 
-    y += 11;
     y = addSectionHeading(doc, '2. Lease Term', y);
     y = drawDetailsGrid(doc, [
       ['Start Date', snapshot.start_date],
@@ -184,96 +323,96 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
       ['Unit', snapshot.unit_number ?? snapshot.unit_id],
     ], y);
 
-    y += 11;
     y = addSectionHeading(doc, '3. Rent and Security Deposit', y);
     y = drawDetailsGrid(doc, [
       ['Monthly Rent', '$' + Number(snapshot.monthly_rent || 0).toFixed(2)],
       ['Security Deposit', '$' + Number(snapshot.security_deposit || 0).toFixed(2)],
     ], y);
 
-    y += 11;
     y = addSectionHeading(doc, '4. Additional Notes', y);
-    doc.rect(51, y, pageWidth, 53).lineWidth(0.7).strokeColor('#cccccc').stroke();
+    const notesHeight = 72.5; // 70px min-height + 2px border + 24px padding
+    y = addPageIfNeeded(doc, y, notesHeight + 41.25 + LAYOUT.signatureHeight + 50);
+    doc.rect(PAGE.margin, y, LAYOUT.contentWidth, notesHeight)
+      .lineWidth(0.75).strokeColor('#cccccc').stroke();
     doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
-      .text(String(snapshot.notes || 'No additional notes.'), 60, y + 8, {
-        width: pageWidth - 18,
-        height: 37,
-        lineBreak: true,
-      });
-    y += 70;
+      .text(String(snapshot.notes || 'No additional notes.'), PAGE.margin + 9,
+        y + 9, {
+          width: LAYOUT.contentWidth - 18,
+          height: notesHeight - 18,
+          lineBreak: true,
+        });
+    y += notesHeight;
 
-    // The unsigned template has a fixed two-column signature block. Keep its
-    // top border, labels, names, and date baselines fixed in both versions.
-    const signatureTop = y + 41;
-    const signatureGap = 30;
-    const signatureWidth = (pageWidth - signatureGap) / 2;
-    const leftX = 51;
-    const rightX = leftX + signatureWidth + signatureGap;
-    const blockHeight = 100;
-    if (signatureTop + blockHeight + 80 > 790) {
-      doc.addPage();
-      y = 51;
-    } else {
-      y = signatureTop;
-    }
-
-    const blockY = y;
-    [leftX, rightX].forEach((x) => {
-      doc.moveTo(x, blockY).lineTo(x + signatureWidth, blockY).strokeColor('#222222').lineWidth(0.7).stroke();
+    y = drawSignatureBlock(doc, {
+      y,
+      tenantSignature,
+      managerSignature,
+      tenantName: tenantName || snapshot.tenant_name,
+      tenantSignedAt,
+      managerSignedAt,
     });
 
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#222222')
-      .text('Tenant Signature', leftX, blockY + 8, { width: signatureWidth, lineBreak: false });
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#222222')
-      .text('Riiroow Apartment Management', rightX, blockY + 8, { width: signatureWidth, lineBreak: false });
-
-    // Signature artwork is drawn into the blank area already reserved by the
-    // printed form. It does not participate in text flow.
-    doc.image(tenantSignature, leftX, blockY + 25, { fit: [signatureWidth - 8, 39], align: 'left', valign: 'center' });
-    doc.image(managerSignature, rightX, blockY + 25, { fit: [signatureWidth - 8, 39], align: 'left', valign: 'center' });
-
-    doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
-      .text('Name: ' + String(tenantName || snapshot.tenant_name || '—'), leftX, blockY + 70, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8.5).fillColor('#555555')
-      .text('Date: ' + formatSigningDate(tenantSignedAt) + ' EAT', leftX, blockY + 85, { width: signatureWidth });
-    doc.font('Helvetica').fontSize(8.5).fillColor('#555555')
-      .text('Date: ' + formatSigningDate(managerSignedAt) + ' EAT', rightX, blockY + 85, { width: signatureWidth });
-
-    y = blockY + blockHeight + 45;
-    doc.moveTo(51, y).lineTo(544, y).strokeColor('#cccccc').lineWidth(0.7).stroke();
+    // Match the unsigned footer and QR archive margins/sizing. Keep the
+    // archive together on one page as required by the original CSS.
+    y += 33.75;
+    doc.moveTo(PAGE.margin, y).lineTo(PAGE.width - PAGE.margin, y)
+      .strokeColor('#cccccc').lineWidth(0.75).stroke();
+    y += 9;
     doc.font('Helvetica').fontSize(8.25).fillColor('#666666')
-      .text('Riiroow Apartment Management — Residential Lease Agreement', 51, y + 10, {
-        width: pageWidth,
+      .text('Riiroow Apartment Management — Residential Lease Agreement',
+        PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+          align: 'center',
+          lineBreak: false,
+        });
+    y += 32.5; // footer line box + QR section margin-top
+    const archiveHeight = 13.5 + 18.75 + 23.625 + 9 + 8 + 127.5 + 12;
+    y = addPageIfNeeded(doc, y, archiveHeight);
+    doc.moveTo(PAGE.margin, y).lineTo(PAGE.width - PAGE.margin, y)
+      .strokeColor('#cccccc').lineWidth(0.75).stroke();
+    y += 13.5;
+    doc.font('Helvetica-Bold').fontSize(12.75).fillColor('#222222')
+      .text('Lease Document Archive', PAGE.margin, y, {
+        width: LAYOUT.contentWidth,
         align: 'center',
         lineBreak: false,
       });
-
-    y += 45;
-    if (y > 650) {
-      doc.addPage();
-      y = 51;
-    }
-    doc.moveTo(51, y).lineTo(544, y).strokeColor('#cccccc').lineWidth(0.7).stroke();
-    doc.font('Helvetica-Bold').fontSize(12.75).fillColor('#222222')
-      .text('Lease Document Archive', 51, y + 12, { width: pageWidth, align: 'center' });
+    y += 28;
     doc.font('Helvetica').fontSize(8.25).fillColor('#555555')
-      .text('Scan this code to view scanned documents attached to this specific lease.', 65, y + 33, {
-        width: pageWidth - 28,
-        align: 'center',
-      });
+      .text('Scan this code to view scanned documents attached to this specific lease.',
+        PAGE.margin + 10, y, {
+          width: LAYOUT.contentWidth - 20,
+          align: 'center',
+        });
+    y += 23;
+    doc.font('Helvetica').fontSize(8.25).fillColor('#555555')
+      .text('Anyone with this QR code or link can access these documents until management revokes or regenerates the link.',
+        PAGE.margin + 10, y, {
+          width: LAYOUT.contentWidth - 20,
+          align: 'center',
+        });
+    y += 24;
     if (qrBuffer) {
-      doc.image(qrBuffer, 51, y + 54, { fit: [120, 120], align: 'center' });
+      doc.image(qrBuffer, (PAGE.width - 127.5) / 2, y, {
+        fit: [127.5, 127.5],
+        align: 'center',
+        valign: 'center',
+      });
     }
 
-    const pageRange = doc.bufferedPageRange();
-    for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex += 1) {
-      doc.switchToPage(pageIndex);
+    const range = doc.bufferedPageRange();
+    for (let index = range.start; index < range.start + range.count; index += 1) {
+      doc.switchToPage(index);
       doc.font('Helvetica').fontSize(8).fillColor('#777777')
-        .text('Page ' + (pageIndex + 1) + ' of ' + pageRange.count, 51, 775, {
-          width: 493,
-          align: 'right',
-          lineBreak: false,
-        });
+        .text('Page ' + (index + 1) + ' of ' + range.count,
+          PAGE.margin, 775, {
+            width: LAYOUT.contentWidth,
+            align: 'right',
+            lineBreak: false,
+          });
     }
     doc.end();
-  });
+  } catch (error) {
+    reject(error);
+  }
+});
