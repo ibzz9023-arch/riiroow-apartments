@@ -50,6 +50,26 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
     return () => { active = false; };
   }, [open, lease?.id, tenantAccessToken, unitNumber]);
 
+  const refreshSigningStatus = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const endpoint = isTenantFlow
+        ? `/api/public/qr/${encodeURIComponent(unitNumber)}/lease-signing`
+        : `/api/leases/${encodeURIComponent(lease.id)}/signing`;
+      const data = await requestJson(endpoint, {
+        method: 'GET',
+        headers: isTenantFlow ? { Authorization: `Bearer ${tenantAccessToken}` } : {},
+      });
+      setSession(data.session || null);
+      if (data.lease) setTenantLease(data.lease);
+    } catch (refreshError) {
+      setError(refreshError.message || 'Unable to refresh signing status.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const pointFromEvent = (event) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -222,7 +242,10 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
         </div>
       ) : null}
       {!loading && !isTenantFlow && session?.status === 'awaiting_tenant' ? (
-        <p role="status">Waiting for the tenant to review and sign using their PIN-verified unit QR portal.</p>
+        <div role="status" className="empty-state">
+          <p>Waiting for the tenant to review and sign using their PIN-verified unit QR portal.</p>
+          <button className="small-btn" type="button" onClick={refreshSigningStatus} disabled={loading}>Refresh signing status</button>
+        </div>
       ) : null}
 
       {!loading && session?.status === 'document_pending' && isTenantFlow ? (
