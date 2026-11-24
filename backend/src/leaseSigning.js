@@ -93,6 +93,22 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
       CreationDate: new Date(managerSignedAt),
     } });
     const chunks = [];
+    let pageNumber = 1;
+    const drawPageNumber = () => {
+      doc.save();
+      doc.font('Helvetica').fontSize(8).fillColor('#777777')
+        .text(`Riiroow Apartments · Lease ${snapshot.id} · Page ${pageNumber}`, 54, doc.page.height - 30, {
+          width: 500,
+          align: 'center',
+          lineBreak: false,
+        });
+      doc.restore();
+    };
+    doc.on('pageAdded', () => {
+      pageNumber += 1;
+      drawPageNumber();
+    });
+    drawPageNumber();
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
