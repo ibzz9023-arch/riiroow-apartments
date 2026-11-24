@@ -87,7 +87,7 @@ app.use((req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   }
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
   next();
 });
 
