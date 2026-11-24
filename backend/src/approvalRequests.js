@@ -76,6 +76,42 @@ export const listApprovalRequests = async ({ requesterId = null } = {}) => {
   return (data || []).map(toPublicRequest);
 };
 
+export const getApprovalRequestOptions = async () => {
+  const client = requireDatabase();
+  const [propertiesResult, categoriesResult] = await Promise.all([
+    client.from('properties').select('id, name').order('name', { ascending: true }),
+    client.from('financial_expense_categories')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name', { ascending: true }),
+  ]);
+  if (propertiesResult.error) throw propertiesResult.error;
+  if (categoriesResult.error) throw categoriesResult.error;
+  return {
+    properties: propertiesResult.data || [],
+    expenseCategories: categoriesResult.data || [],
+  };
+};
+
+const mapReviewError = (error) => {
+  const code = String(error?.code || '');
+  const statusCode = ({
+    '22023': 400,
+    '22P02': 400,
+    '22007': 400,
+    '22003': 400,
+    '42501': 403,
+    'P0002': 404,
+    '23505': 409,
+    '23503': 409,
+    '40001': 409,
+  })[code] || 500;
+  return Object.assign(
+    new Error(error?.message || 'Unable to complete the approval decision.'),
+    { statusCode, code: code || undefined }
+  );
+};
+
 export const reviewApprovalRequest = async ({ requestId, action, reviewerId, reviewReason }) => {
   if (!['approve', 'reject'].includes(action)) {
     throw Object.assign(new Error('Choose approve or reject.'), { statusCode: 400 });
@@ -85,38 +121,18 @@ export const reviewApprovalRequest = async ({ requestId, action, reviewerId, rev
     throw Object.assign(new Error('A written rejection reason between 3 and 2,000 characters is required.'), { statusCode: 400 });
   }
 
-  const client = requireDatabase();
-  const { data: current, error: readError } = await client
-    .from('approval_requests')
-    .select('id, status, requester_id')
-    .eq('id', requestId)
-    .maybeSingle();
-  if (readError) throw readError;
-  if (!current) throw Object.assign(new Error('Approval request not found.'), { statusCode: 404 });
-  if (current.requester_id === reviewerId) {
-    throw Object.assign(new Error('You cannot approve or reject your own request.'), { statusCode: 403 });
-  }
-  if (current.status !== 'pending') {
-    throw Object.assign(new Error('This request has already been reviewed.'), { statusCode: 409 });
-  }
-
-  const { data, error } = await client
-    .from('approval_requests')
-    .update({
-      status: action === 'approve' ? 'approved' : 'rejected',
-      reviewer_id: reviewerId,
-      review_reason: action === 'reject' ? reason : (reason || null),
-      reviewed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', requestId)
-    .eq('status', 'pending')
-    .neq('requester_id', reviewerId)
-    .select('*')
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) {
-    throw Object.assign(new Error('The request was already reviewed or could not be updated.'), { statusCode: 409 });
+  // The database function locks the request, executes the requested operation,
+  // and records the decision in one transaction. A failed operation rolls back
+  // the decision, and concurrent Admin reviews cannot execute it twice.
+  const { data, error } = await requireDatabase().rpc('review_approval_request', {
+    p_request_id: requestId,
+    p_action: action,
+    p_reviewer_id: reviewerId,
+    p_review_reason: reason || null,
+  });
+  if (error) throw mapReviewError(error);
+  if (!data || typeof data !== 'object') {
+    throw Object.assign(new Error('The approval decision returned no request record.'), { statusCode: 500 });
   }
   return toPublicRequest(data);
 };
