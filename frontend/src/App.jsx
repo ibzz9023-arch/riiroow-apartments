@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase, hasSupabase } from './supabaseClient';
 import QRCode from 'qrcode';
 import FinancialManagement from './FinancialManagement';
+import LeaseSigning from './LeaseSigning';
 
 
 const formatCurrency = (value) =>
@@ -253,23 +254,40 @@ function LeaseDocumentsPublicPage({ accessToken }) {
 
         {!loading && !error && documents.length ? (
           <div className="stacked-sections">
-            {documents.map((document) => (
-              <section className="panel" key={document.id}>
-                <strong>{document.originalName}</strong>
-                <p className="muted">
-                  {document.mimeType} · {formatSize(document.fileSize)}
-                  {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
-                </p>
-                <div className="form-actions">
-                  <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">
-                    Preview
-                  </a>
-                  <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">
-                    Download
-                  </a>
-                </div>
-              </section>
-            ))}
+            {documents.some((document) => document.documentType === 'signed_lease') ? (
+              <>
+                <h3>Automatically generated signed lease</h3>
+                {documents.filter((document) => document.documentType === 'signed_lease').map((document) => (
+                  <section className="panel" key={document.id}>
+                    <strong>{document.originalName}</strong>
+                    <p className="muted">Signed lease agreement · {formatSize(document.fileSize)}</p>
+                    <p className="muted">{document.createdAt ? `Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}</p>
+                    <div className="form-actions">
+                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">View signed lease</a>
+                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                    </div>
+                  </section>
+                ))}
+              </>
+            ) : null}
+            {documents.some((document) => document.documentType !== 'signed_lease') ? (
+              <>
+                <h3>Other lease documents</h3>
+                {documents.filter((document) => document.documentType !== 'signed_lease').map((document) => (
+                  <section className="panel" key={document.id}>
+                    <strong>{document.originalName}</strong>
+                    <p className="muted">
+                      {document.mimeType} · {formatSize(document.fileSize)}
+                      {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
+                    </p>
+                    <div className="form-actions">
+                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
+                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                    </div>
+                  </section>
+                ))}
+              </>
+            ) : null}
           </div>
         ) : null}
 
@@ -4011,6 +4029,13 @@ const handleLogin = async (event) => {
 
                     {leaseDocumentsError ? <p className="error-text" role="alert">{leaseDocumentsError}</p> : null}
                     {leaseDocumentsLoading ? <p role="status">Loading lease documents…</p> : null}
+                    {['admin', 'manager'].includes(role) ? (
+                      <LeaseSigning
+                        lease={selectedLeaseForDocuments}
+                        requestJson={requestJson}
+                        onCompleted={() => refreshLeaseDocuments(selectedLeaseForDocuments.id)}
+                      />
+                    ) : null}
 
                     {['admin', 'manager'].includes(role) ? (
                       <form className="crud-form" onSubmit={handleLeaseDocumentsUpload}>
@@ -4035,21 +4060,42 @@ const handleLogin = async (event) => {
                     ) : null}
 
                     <div className="stacked-sections">
-                      {leaseDocuments.map((document) => (
-                        <div className="panel" key={document.id}>
-                          <strong>{document.originalName}</strong>
-                          <p className="muted">
-                            {document.mimeType} · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
-                            {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
-                          </p>
-                          <div className="form-actions">
-                            <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
-                            <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
-                          </div>
-                        </div>
-                      ))}
+                      {leaseDocuments.some((document) => document.documentType === 'signed_lease') ? (
+                        <>
+                          <h4>Automatically generated signed lease</h4>
+                          {leaseDocuments.filter((document) => document.documentType === 'signed_lease').map((document) => (
+                            <div className="panel" key={document.id}>
+                              <strong>{document.originalName}</strong>
+                              <p className="muted">Signed lease agreement · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB</p>
+                              <p className="muted">{document.createdAt ? `Added ${formatDateTime(document.createdAt)}` : ''}</p>
+                              <div className="form-actions">
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">View signed lease</a>
+                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
+                      {leaseDocuments.some((document) => document.documentType !== 'signed_lease') ? (
+                        <>
+                          <h4>Manually uploaded documents</h4>
+                          {leaseDocuments.filter((document) => document.documentType !== 'signed_lease').map((document) => (
+                            <div className="panel" key={document.id}>
+                              <strong>{document.originalName}</strong>
+                              <p className="muted">
+                                {document.mimeType} · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
+                                {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
+                              </p>
+                              <div className="form-actions">
+                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Preview</a>
+                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
                       {!leaseDocumentsLoading && !leaseDocumentsError && !leaseDocuments.length ? (
-                        <EmptyState title="No scanned documents" message="Upload lease scans, signed pages, or supporting documents to keep them with this lease." />
+                        <EmptyState title="No lease documents" message="The signed lease and manually uploaded supporting documents will appear here." />
                       ) : null}
                     </div>
 
