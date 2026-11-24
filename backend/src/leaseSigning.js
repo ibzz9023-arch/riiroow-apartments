@@ -45,6 +45,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
       Title: 'Riiroow Signed Lease Agreement',
       Author: 'Riiroow Apartments',
       Subject: `Signed lease ${snapshot.id}`,
+      CreationDate: new Date(managerSignedAt),
     } });
     const chunks = [];
     doc.on('data', (chunk) => chunks.push(chunk));
