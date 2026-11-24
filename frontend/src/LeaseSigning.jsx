@@ -233,7 +233,12 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
         </div>
       ) : null}
 
-      {!loading && !session && isTenantFlow ? <p role="status">Management has not prepared this lease for signing yet. Please contact the property manager.</p> : null}
+      {!loading && !session && isTenantFlow ? (
+        <div role="status">
+          <p>Management has not prepared this lease for signing yet. Please contact the property manager.</p>
+          <button className="small-btn" type="button" onClick={refreshSigningStatus} disabled={loading}>Check again</button>
+        </div>
+      ) : null}
       {!loading && isTenantFlow && session?.status === 'awaiting_manager' ? (
         <div role="status" className="empty-state">
           <h4>Tenant signature received</h4>
