@@ -21,6 +21,7 @@ import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigning
 import {
   submitApprovalRequest,
   listApprovalRequests,
+  getApprovalRequestOptions,
   reviewApprovalRequest,
 } from './src/approvalRequests.js';
 import cors from 'cors';
@@ -1288,6 +1289,17 @@ app.get('/api/approval-requests', requireRoles('Admin', 'Manager'), async (req, 
     console.error('List approval requests error:', error);
     return res.status(error.statusCode || 500).json({
       error: error.statusCode ? error.message : 'Unable to load approval requests.',
+    });
+  }
+});
+
+app.get('/api/approval-requests/options', requireRoles('Admin', 'Manager'), async (req, res) => {
+  try {
+    return res.json(await getApprovalRequestOptions());
+  } catch (error) {
+    console.error('Load approval request options error:', error);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to load approval request options.',
     });
   }
 });
