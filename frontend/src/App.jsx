@@ -192,6 +192,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
 
   useEffect(() => {
     let active = true;
+    setUnitNumber('');
     const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
     const endpoint = `${apiBaseUrl}/api/public/lease-documents/${encodeURIComponent(accessToken)}`;
 
