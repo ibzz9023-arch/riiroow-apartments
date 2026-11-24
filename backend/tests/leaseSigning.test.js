@@ -81,6 +81,7 @@ test('createSignedLeasePdf generates an A4 PDF with both handwritten signatures'
       tenant_name: 'Test Tenant',
       tenant_phone: '+252 600000000',
       tenant_email: 'tenant@example.test',
+      created_at: '2026-11-20T12:00:00.000Z',
       start_date: '2026-12-01',
       end_date: '2027-11-30',
       monthly_rent: 500,
