@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import PDFDocument from 'pdfkit';
 import { createLeasePdf } from './leasePdfTemplate.js';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
