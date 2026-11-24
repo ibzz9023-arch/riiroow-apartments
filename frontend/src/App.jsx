@@ -293,7 +293,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
           </div>
         ) : null}
 
-        {unitNumber ? (
+        {unitNumber && !documents.some((document) => document.documentType === 'signed_lease') ? (
           <section className="panel" style={{ marginTop: '20px' }}>
             <h3>Need to sign this lease?</h3>
             <p className="muted">Open the tenant portal and verify your PIN to review and sign this lease using Apple Pencil or your finger.</p>
