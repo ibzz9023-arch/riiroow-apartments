@@ -242,7 +242,7 @@ function LeaseDocumentsPublicPage({ accessToken }) {
           </div>
         </div>
         <div className="auth-intro">
-          Scanned documents shared for this lease.
+          Your signed lease and supporting documents shared for this lease.
         </div>
 
         {loading ? <p role="status">Loading documents…</p> : null}
@@ -2281,7 +2281,7 @@ const handleLogin = async (event) => {
     <h2>Lease Document Archive</h2>
     ${leaseDocumentsQrDataUrl
       ? `<img src="${safe(leaseDocumentsQrDataUrl)}" alt="QR code to this lease's scanned documents">
-         <p>Scan this code to view scanned documents attached to this specific lease.</p>
+         <p>Scan this code to view the signed lease and other documents attached to this specific lease.</p>
          <p>Anyone with this QR code or link can access these documents until management revokes or regenerates the link.</p>`
       : `<p>${safe(leaseDocumentsQrUnavailableReason)}</p>`}
   </section>
