@@ -56,6 +56,8 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     addField(doc, 'Lease reference', snapshot.id);
     addField(doc, 'Unit', snapshot.unit_number ?? snapshot.unit_id ?? '—');
     addField(doc, 'Tenant', snapshot.tenant_name);
+    addField(doc, 'Tenant phone', snapshot.tenant_phone);
+    addField(doc, 'Tenant email', snapshot.tenant_email);
     addField(doc, 'Lease period', `${snapshot.start_date || '—'} to ${snapshot.end_date || '—'}`);
     addField(doc, 'Monthly rent', `$${Number(snapshot.monthly_rent || 0).toFixed(2)}`);
     addField(doc, 'Security deposit', `$${Number(snapshot.security_deposit || 0).toFixed(2)}`);
