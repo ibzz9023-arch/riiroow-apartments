@@ -1,0 +1,43 @@
+name: Smart Lease Signing Checks
+
+on:
+  push:
+    branches:
+      - feature/smart-lease-signing
+      - deploy/smart-lease-signing-main
+  pull_request:
+    branches:
+      - main
+      - deploy/security-deposits
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/smart-lease-signing.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smart-lease-signing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install backend dependencies from lockfile
+        run: npm ci --prefix backend --no-audit --no-fund
+      - name: Install frontend dependencies from lockfile
+        run: npm ci --prefix frontend --no-audit --no-fund
+      - name: Run backend tests
+        run: npm test --prefix backend
+      - name: Build frontend
+        run: npm run build --prefix frontend

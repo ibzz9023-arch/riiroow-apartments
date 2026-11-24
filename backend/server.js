@@ -17,6 +17,7 @@ import {
   reviewMoveOutRequest,
 } from './src/moveOutRequests.js';
 import { financialRouter } from './src/financialRoutes.js';
+import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigningRoutes.js';
 import {
   submitApprovalRequest,
   listApprovalRequests,
@@ -91,7 +92,9 @@ app.use((req, res, next) => {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
+app.use('/api/leases', leaseSigningRouter);
+app.use('/api/public/qr', tenantLeaseSigningRouter);
 app.use('/api/financial', financialRouter);
 
 const QR_MEDIA_BUCKET = 'maintenance-evidence';
@@ -367,6 +370,7 @@ const signLeaseDocument = async (row) => {
     originalName: row.original_name,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),
+    documentType: row.document_type || 'manual',
     createdAt: row.created_at,
     previewUrl: previewData.signedUrl,
     downloadUrl: downloadData.signedUrl,
@@ -748,13 +752,19 @@ app.get('/api/public/lease-documents/:token', async (req, res) => {
 
     const { data: rows, error: documentsError } = await supabaseServiceRole
       .from('lease_documents')
-      .select('id, original_name, mime_type, file_size, created_at, storage_path')
+      .select('id, original_name, mime_type, file_size, document_type, created_at, storage_path')
       .eq('lease_id', access.lease_id)
       .order('created_at', { ascending: false });
     if (documentsError) throw documentsError;
 
     const documents = await Promise.all((rows || []).map(signLeaseDocument));
-    return res.json({ documents });
+    const { data: lease, error: leaseError } = await supabaseServiceRole
+      .from('leases')
+      .select('unit_number')
+      .eq('id', access.lease_id)
+      .maybeSingle();
+    if (leaseError) throw leaseError;
+    return res.json({ documents, unitNumber: lease?.unit_number ?? null });
   } catch (error) {
     console.error('Public lease documents fetch error:', error?.message || error);
     return res.status(500).json({
@@ -773,7 +783,7 @@ app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountan
     const [{ data: rows, error: documentsError }, { data: access, error: accessError }] = await Promise.all([
       supabaseServiceRole
         .from('lease_documents')
-        .select('id, original_name, mime_type, file_size, created_at, storage_path')
+        .select('id, original_name, mime_type, file_size, document_type, created_at, storage_path')
         .eq('lease_id', lease.id)
         .order('created_at', { ascending: false }),
       supabaseServiceRole
@@ -861,6 +871,7 @@ app.post(
           storage_path: storagePath,
           mime_type: detected.mimeType,
           file_size: file.size,
+          document_type: 'manual',
           created_by: req.auth.sub,
         });
       }
