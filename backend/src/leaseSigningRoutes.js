@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabaseServiceRole } from './supabaseClient.js';
-import { getSessionSecret, requireRoles } from './authSession.js';
-import QRCode from 'qrcode';
+import { requireRoles } from './authSession.js';
 import {
   createLeaseDocumentNonce,
   deriveLeaseDocumentToken,
@@ -17,66 +16,6 @@ export const tenantLeaseSigningRouter = Router();
 const BUCKET = 'lease-documents';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const managerOnly = requireRoles('Admin', 'Manager');
-const getDocumentTokenSecret = () => {
-  const configured = String(process.env.LEASE_DOCUMENT_TOKEN_SECRET || '').trim();
-  if (!configured) return getSessionSecret();
-  if (!/^[A-Za-z0-9_-]+$/.test(configured)) {
-    throw new Error('LEASE_DOCUMENT_TOKEN_SECRET must be canonical base64url.');
-  }
-  const secret = Buffer.from(configured, 'base64url');
-  if (secret.length < 32 || secret.toString('base64url') !== configured) {
-    throw new Error('LEASE_DOCUMENT_TOKEN_SECRET must contain at least 32 random bytes.');
-  }
-  return secret;
-};
-
-const getOrCreateDocumentToken = async (leaseId, createdBy) => {
-  const secret = getDocumentTokenSecret();
-  const { data: existing, error } = await supabaseServiceRole
-    .from('lease_document_access')
-    .select('token_hash, token_nonce, revoked_at')
-    .eq('lease_id', leaseId)
-    .maybeSingle();
-  if (error) throw error;
-  if (existing) {
-    if (existing.revoked_at) {
-      throw Object.assign(new Error('Lease QR access is revoked. A manager must regenerate the QR link before finalizing the signed PDF.'), { statusCode: 409 });
-    }
-    const token = deriveLeaseDocumentToken(leaseId, existing.token_nonce, secret);
-    if (!leaseDocumentTokenMatchesHash(token, existing.token_hash)) {
-      throw Object.assign(new Error('Lease QR token configuration does not match the existing link. Regenerate the QR link before signing.'), { statusCode: 409 });
-    }
-    return token;
-  }
-
-  const nonce = createLeaseDocumentNonce();
-  const token = deriveLeaseDocumentToken(leaseId, nonce, secret);
-  const now = new Date().toISOString();
-  const { error: insertError } = await supabaseServiceRole.from('lease_document_access').insert([{
-    lease_id: leaseId,
-    token_hash: hashLeaseDocumentToken(token),
-    token_nonce: nonce,
-    created_by: createdBy,
-    created_at: now,
-    updated_at: now,
-  }]);
-  if (!insertError) return token;
-  if (insertError.code === '23505') {
-    const { data: raced, error: racedError } = await supabaseServiceRole
-      .from('lease_document_access')
-      .select('token_hash, token_nonce, revoked_at')
-      .eq('lease_id', leaseId)
-      .maybeSingle();
-    if (racedError) throw racedError;
-    if (raced && !raced.revoked_at) {
-      const racedToken = deriveLeaseDocumentToken(leaseId, raced.token_nonce, secret);
-      if (leaseDocumentTokenMatchesHash(racedToken, raced.token_hash)) return racedToken;
-    }
-  }
-  throw insertError;
-};
-
-
 const sendError = (res, error, fallback) => {
   const status = Number(error?.statusCode) || 500;
   if (status >= 500) console.error(fallback, error?.message || error);
@@ -187,14 +126,6 @@ const finalizeSession = async (session, appOrigin) => {
       console.warn('Optional tenant photo could not be included in signed lease:', photoError?.message || photoError);
     }
   }
-  const documentToken = await getOrCreateDocumentToken(session.lease_id, session.manager_signed_by);
-  const publicDocumentUrl = `${String(appOrigin || '').replace(/\\/$/, '')}/lease-documents/${documentToken}`;
-  const qrBuffer = await QRCode.toBuffer(publicDocumentUrl, {
-    type: 'png',
-    width: 190,
-    margin: 1,
-    errorCorrectionLevel: 'M',
-  });
   const pdf = await createSignedLeasePdf({
     snapshot: session.lease_snapshot,
     tenantSignature,
@@ -205,7 +136,6 @@ const finalizeSession = async (session, appOrigin) => {
     managerName: session.manager_name,
     tenantPhoto,
     sessionId: session.id,
-    qrBuffer,
   });
   if (pdf.length > 10 * 1024 * 1024) {
     throw Object.assign(new Error('The generated signed lease exceeds the 10 MB document limit.'), { statusCode: 413 });
