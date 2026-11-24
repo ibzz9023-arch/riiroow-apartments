@@ -13,6 +13,7 @@ import { createSignedLeasePdf, decodeSignaturePng, hashLeaseSnapshot } from './l
 import { requireTenantQrSession } from './tenantQrAuth.js';
 
 export const leaseSigningRouter = Router();
+export const tenantLeaseSigningRouter = Router();
 const BUCKET = 'lease-documents';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const managerOnly = requireRoles('Admin', 'Manager');
