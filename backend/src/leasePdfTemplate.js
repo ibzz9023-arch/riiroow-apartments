@@ -152,15 +152,17 @@ export const createLeasePdf = ({
 
   y = sectionHeading(doc, '4. Additional Notes', y + 7);
   const notesTop = y;
-  doc.rect(PAGE.left, notesTop, CONTENT_WIDTH, 58).lineWidth(0.7).strokeColor('#cccccc').stroke();
+  const notesText = snapshot.notes || 'No additional notes.';
+  doc.font('Helvetica').fontSize(9);
+  const notesTextHeight = doc.heightOfString(notesText, { width: CONTENT_WIDTH - 20, lineGap: 1.5 });
+  const notesBoxHeight = Math.max(58, notesTextHeight + 18);
+  doc.rect(PAGE.left, notesTop, CONTENT_WIDTH, notesBoxHeight).lineWidth(0.7).strokeColor('#cccccc').stroke();
   doc.font('Helvetica').fontSize(9).fillColor(COLORS.ink)
-    .text(snapshot.notes || 'No additional notes.', PAGE.left + 10, notesTop + 9, {
+    .text(notesText, PAGE.left + 10, notesTop + 9, {
       width: CONTENT_WIDTH - 20,
-      height: 40,
       lineGap: 1.5,
-      ellipsis: true,
     });
-  y = notesTop + 76;
+  y = notesTop + notesBoxHeight + 18;
 
   // Keep the complete signature section together. This check depends only on
   // the lease text, never on whether signature images are present.
