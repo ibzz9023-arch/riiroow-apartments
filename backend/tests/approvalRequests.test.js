@@ -112,4 +112,5 @@ test('atomic approval migration locks each request and handles every supported a
   assert.match(migration, /create_financial_expense/i);
   assert.match(migration, /public\.maintenance_requests WHERE tenant_id = v_target_id/i);
   assert.match(migration, /public\.rent_legacy_balances WHERE tenant_id = v_target_id/i);
+  assert.match(migration, /Historical approved lease termination request\(s\)/i);
 });
