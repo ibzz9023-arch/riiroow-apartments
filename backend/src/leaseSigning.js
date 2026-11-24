@@ -95,6 +95,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     const chunks = [];
     let pageNumber = 1;
     const drawPageNumber = () => {
+      const previousY = doc.y;
       doc.save();
       doc.font('Helvetica').fontSize(8).fillColor('#777777')
         .text(`Riiroow Apartments · Lease ${snapshot.id} · Page ${pageNumber}`, 54, doc.page.height - 30, {
@@ -103,6 +104,7 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
           lineBreak: false,
         });
       doc.restore();
+      doc.y = previousY;
     };
     doc.on('pageAdded', () => {
       pageNumber += 1;
