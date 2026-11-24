@@ -130,6 +130,7 @@ BEGIN
         v_requested_rent := NULLIF(BTRIM(v_details->>'requestedRent'), '')::numeric;
 
         IF v_current_rent IS NULL OR v_requested_rent IS NULL
+           OR v_current_rent::text = 'NaN' OR v_requested_rent::text = 'NaN'
            OR v_current_rent < 0 OR v_requested_rent <= 0
            OR v_requested_rent > 1000000000
            OR v_current_rent <> ROUND(v_current_rent, 2)
@@ -186,6 +187,7 @@ BEGIN
         v_target_id := NULLIF(BTRIM(v_details->>'leaseId'), '')::uuid;
         v_amount := NULLIF(BTRIM(v_details->>'amount'), '')::numeric;
         IF v_target_id IS NULL OR v_amount IS NULL
+           OR v_amount::text = 'NaN'
            OR v_amount <= 0 OR v_amount > 1000000000
            OR v_amount <> ROUND(v_amount, 2) THEN
             RAISE EXCEPTION 'The security-deposit refund request is missing a valid lease ID or amount.'
