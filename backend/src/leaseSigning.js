@@ -78,6 +78,14 @@ const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
+const formatLeaseDate = (value) => {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'long',
+    timeZone: 'Africa/Mogadishu',
+  }).format(new Date(value));
+};
+
 const addField = (doc, label, value) => {
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#555555').text(label.toUpperCase());
   doc.font('Helvetica').fontSize(11).fillColor('#171717').text(String(value || '—'), { width: 500 });
@@ -134,7 +142,9 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
     addField(doc, 'Tenant', snapshot.tenant_name);
     addField(doc, 'Tenant phone', snapshot.tenant_phone);
     addField(doc, 'Tenant email', snapshot.tenant_email);
-    addField(doc, 'Lease period', `${snapshot.start_date || '—'} to ${snapshot.end_date || '—'}`);
+    addField(doc, 'Lease created', formatLeaseDate(snapshot.created_at));
+    addField(doc, 'Lease commencement date', formatLeaseDate(snapshot.start_date));
+    addField(doc, 'Lease end date', formatLeaseDate(snapshot.end_date));
     addField(doc, 'Monthly rent', `$${Number(snapshot.monthly_rent || 0).toFixed(2)}`);
     addField(doc, 'Security deposit', `$${Number(snapshot.security_deposit || 0).toFixed(2)}`);
     addField(doc, 'Lease status at signing', snapshot.status);
