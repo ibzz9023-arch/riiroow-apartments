@@ -489,11 +489,14 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
       .from('lease_signing_sessions')
       .update(update)
       .eq('id', session.id)
+      .eq('status', 'awaiting_manager')
+      .is('manager_signed_at', null)
       .select('*')
-      .single();
-    if (updateError) {
+      .maybeSingle();
+    if (updateError || !updated) {
       await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
-      throw updateError;
+      if (updateError) throw updateError;
+      return res.status(409).json({ error: 'The manager signature was already submitted. Refresh the signing status before continuing.' });
     }
     await recordSigningEvent({
       leaseId: req.params.id,
