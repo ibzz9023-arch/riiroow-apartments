@@ -770,7 +770,7 @@ app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountan
     const [{ data: rows, error: documentsError }, { data: access, error: accessError }] = await Promise.all([
       supabaseServiceRole
         .from('lease_documents')
-        .select('id, original_name, mime_type, file_size, created_at, storage_path')
+        .select('id, original_name, mime_type, file_size, document_type, created_at, storage_path')
         .eq('lease_id', lease.id)
         .order('created_at', { ascending: false }),
       supabaseServiceRole
