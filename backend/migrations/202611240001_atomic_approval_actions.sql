@@ -227,9 +227,11 @@ BEGIN
 
         IF EXISTS (SELECT 1 FROM public.leases WHERE tenant_id = v_target_id)
            OR EXISTS (SELECT 1 FROM public.payments WHERE tenant_id = v_target_id)
+           OR EXISTS (SELECT 1 FROM public.maintenance_requests WHERE tenant_id = v_target_id)
+           OR EXISTS (SELECT 1 FROM public.rent_legacy_balances WHERE tenant_id = v_target_id)
            OR EXISTS (SELECT 1 FROM public.rent_receipts WHERE tenant_id = v_target_id)
            OR EXISTS (SELECT 1 FROM public.tenant_credit_accounts WHERE tenant_id = v_target_id) THEN
-            RAISE EXCEPTION 'Tenants with historical lease, payment, receipt, or credit records cannot be deleted. Terminate the lease instead to preserve records.'
+            RAISE EXCEPTION 'Tenants with historical lease, payment, maintenance, receipt, or credit records cannot be deleted. Terminate the lease instead to preserve records.'
                 USING ERRCODE = '23503';
         END IF;
 
