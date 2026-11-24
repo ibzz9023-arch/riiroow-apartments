@@ -10,6 +10,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [hasInk, setHasInk] = useState(false);
   const [signatureMethod, setSignatureMethod] = useState('draw');
@@ -320,6 +321,24 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
       setSaving(false);
     }
   };
+  const regenerateSignedPdf = async () => {
+    if (isTenantFlow || !session?.id || !displayLease.id) return;
+    setSaving(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const data = await requestJson(
+        `/api/leases/${encodeURIComponent(displayLease.id)}/signing/${encodeURIComponent(session.id)}/regenerate-pdf`,
+        { method: 'POST', body: {} }
+      );
+      setSuccessMessage(data.message || 'A corrected signed-lease copy was added to the lease documents.');
+      onCompleted?.();
+    } catch (regenerateError) {
+      setError(regenerateError.message || 'Unable to regenerate the signed lease PDF.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!open) {
     return (
@@ -349,6 +368,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
 
       {loading ? <p role="status">Preparing signing session…</p> : null}
       {error ? <p className="error-text" role="alert">{error}</p> : null}
+      {successMessage ? <p className="success-text" role="status">{successMessage}</p> : null}
 
       {!loading && session?.status === 'signed' ? (
         <div className="empty-state" role="status">
@@ -356,6 +376,16 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
           <p>Both signatures have been saved. The final PDF is available in this lease’s Documents list and through its QR code.</p>
           <p className="muted">Tenant: {session.tenantSignedAt ? new Date(session.tenantSignedAt).toLocaleString() : '—'}</p>
           <p className="muted">Manager: {session.managerSignedAt ? new Date(session.managerSignedAt).toLocaleString() : '—'}</p>
+          {!isTenantFlow && session.canRegeneratePdf ? (
+            <div className="form-actions">
+              <button className="small-btn" type="button" onClick={regenerateSignedPdf} disabled={saving}>
+                {saving ? 'Preparing corrected copy…' : 'Create corrected PDF copy'}
+              </button>
+            </div>
+          ) : null}
+          {!isTenantFlow && !session.canRegeneratePdf ? (
+            <p className="muted">This lease was signed before secure signature retention was added. Its original signed PDF is preserved, but the original signature files are unavailable for safe regeneration.</p>
+          ) : null}
         </div>
       ) : null}
 

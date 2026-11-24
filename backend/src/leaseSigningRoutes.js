@@ -137,36 +137,13 @@ const sessionResponse = (session) => ({
   managerName: session.manager_name,
   managerSignedAt: session.manager_signed_at,
   documentReady: session.status === 'signed',
+  canRegeneratePdf: Boolean(session.tenant_signature_path && session.manager_signature_path),
 });
 
-const cleanupSignatureFiles = async (session) => {
-  const paths = [session?.tenant_signature_path, session?.manager_signature_path].filter(Boolean);
-  if (!paths.length) return;
-
-  try {
-    const { error } = await supabaseServiceRole.storage.from(BUCKET).remove(paths);
-    if (error) {
-      console.warn('Temporary lease signature images could not be removed:', error.message || error);
-      return;
-    }
-
-    const { error: updateError } = await supabaseServiceRole
-      .from('lease_signing_sessions')
-      .update({
-        tenant_signature_path: null,
-        manager_signature_path: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', session.id);
-    if (updateError) {
-      console.warn('Temporary lease signature paths could not be cleared:', updateError.message || updateError);
-    }
-  } catch (error) {
-    // The signed PDF is the permanent record. Cleanup must never undo a
-    // successful signing operation; a later manager status check retries it.
-    console.warn('Temporary lease signature cleanup failed:', error?.message || error);
-  }
-};
+// Keep the private signature originals and their database paths after finalization.
+// They are required to regenerate a corrected PDF later without asking either
+// signer to sign again. Access remains server-side through the service role.
+const cleanupSignatureFiles = async () => {};
 
 const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, actorUserId = null, actorName = null, metadata = {} }) => {
   const { error } = await supabaseServiceRole.from('lease_signing_events').insert([{
@@ -633,5 +610,114 @@ leaseSigningRouter.post('/:id/signing/:sessionId/finalize', managerOnly, async (
     return res.json({ session: await finalizeSession(session, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
   } catch (error) {
     return sendError(res, error, 'Unable to generate or upload the signed lease PDF.');
+  }
+});
+
+// Create a corrected archival copy from the exact signatures already captured.
+// The original signed PDF is never overwritten; the new PDF is a separate
+// signed_lease document in the same private lease archive.
+leaseSigningRouter.post('/:id/signing/:sessionId/regenerate-pdf', managerOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!supabaseServiceRole) return res.status(503).json({ error: 'Private lease document storage is not configured.' });
+    const session = await getSession(req.params.id, req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Signing session not found.' });
+    if (session.status !== 'signed' || !session.final_document_id) {
+      return res.status(409).json({ error: 'Only a finalized signed lease can be regenerated.' });
+    }
+    if (!session.tenant_signature_path || !session.manager_signature_path) {
+      return res.status(409).json({
+        error: 'The original signature images are not available for this older signed lease. Its original PDF has been preserved; a corrected copy cannot be created without the original signature assets.',
+        code: 'SIGNATURE_ASSETS_UNAVAILABLE',
+      });
+    }
+    const bucket = supabaseServiceRole.storage.from(BUCKET);
+    const [tenantResult, managerResult] = await Promise.all([
+      bucket.download(session.tenant_signature_path),
+      bucket.download(session.manager_signature_path),
+    ]);
+    if (tenantResult.error) throw tenantResult.error;
+    if (managerResult.error) throw managerResult.error;
+    const [tenantSignature, managerSignature] = await Promise.all([
+      tenantResult.data.arrayBuffer().then((bytes) => Buffer.from(bytes)),
+      managerResult.data.arrayBuffer().then((bytes) => Buffer.from(bytes)),
+    ]);
+
+    let tenantPhoto = null;
+    if (session.lease_snapshot?.tenant_photo_storage_path) {
+      const { data: photo, error: photoError } = await supabaseServiceRole.storage
+        .from('tenant-photos')
+        .download(session.lease_snapshot.tenant_photo_storage_path);
+      if (!photoError && photo) {
+        const photoBuffer = Buffer.from(await photo.arrayBuffer());
+        const isJpeg = photoBuffer[0] === 0xff && photoBuffer[1] === 0xd8 && photoBuffer[2] === 0xff;
+        const isPng = photoBuffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        if (isJpeg || isPng) tenantPhoto = photoBuffer;
+      }
+    }
+
+    const documentToken = await getOrCreateDocumentToken(session.lease_id, session.manager_signed_by);
+    const appOrigin = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`;
+    const publicDocumentUrl = `${String(appOrigin).replace(/\/$/, '')}/lease-documents/${documentToken}`;
+    const qrBuffer = await QRCode.toBuffer(publicDocumentUrl, {
+      type: 'png', width: 190, margin: 1, errorCorrectionLevel: 'M',
+    });
+    const pdf = await createSignedLeasePdf({
+      snapshot: session.lease_snapshot,
+      tenantSignature,
+      managerSignature,
+      tenantSignedAt: session.tenant_signed_at,
+      managerSignedAt: session.manager_signed_at,
+      tenantName: session.tenant_name,
+      managerName: session.manager_name,
+      tenantPhoto,
+      sessionId: session.id,
+      qrBuffer,
+    });
+    if (pdf.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'The regenerated signed lease exceeds the 10 MB document limit.' });
+    }
+
+    const revisionPath = `${session.lease_id}/signed/revisions/${session.id}-${crypto.randomUUID()}.pdf`;
+    const { error: uploadError } = await bucket.upload(revisionPath, pdf, {
+      contentType: 'application/pdf',
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const { data: document, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
+      lease_id: session.lease_id,
+      original_name: 'Signed_Lease_Agreement_Corrected.pdf',
+      storage_path: revisionPath,
+      mime_type: 'application/pdf',
+      file_size: pdf.length,
+      document_type: 'signed_lease',
+      created_by: req.auth.sub,
+    }]).select('id, original_name, created_at').single();
+    if (insertError) {
+      const { error: removeError } = await bucket.remove([revisionPath]);
+      if (removeError) console.warn('Unregistered regenerated lease PDF could not be cleaned up:', removeError.message || removeError);
+      throw insertError;
+    }
+    await recordSigningEvent({
+      leaseId: session.lease_id,
+      sessionId: session.id,
+      eventType: 'signed_pdf_generated',
+      actorType: 'manager',
+      actorUserId: req.auth.sub,
+      actorName: session.manager_name,
+      metadata: {
+        documentId: document.id,
+        regeneratedCopy: true,
+        originalDocumentId: session.final_document_id,
+        sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
+        fileSize: pdf.length,
+      },
+    });
+    return res.status(201).json({
+      document,
+      message: 'A corrected signed-lease copy was added. The original signed PDF remains unchanged.',
+    });
+  } catch (error) {
+    return sendError(res, error, 'Unable to regenerate the signed lease PDF.');
   }
 });
