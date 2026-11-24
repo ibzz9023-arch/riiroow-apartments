@@ -95,7 +95,7 @@ export default function ApprovalRequests({ role, token, onShare }) {
         method: 'PATCH',
         body: JSON.stringify({ action, reviewReason }),
       });
-      setNotice(action === 'approve' ? 'Request approved.' : 'Request rejected.');
+      setNotice(action === 'approve' ? (item.requestType === 'lease_termination' ? 'Request approved. The lease has been terminated.' : 'Request approved.') : 'Request rejected.');
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -179,7 +179,7 @@ export default function ApprovalRequests({ role, token, onShare }) {
                         </div>
                       ) : item.status === 'pending' ? 'Awaiting Admin review' : (
                         <div>
-                          <div>{item.status === 'approved' ? 'Reviewed by Admin' : 'Rejected by Admin'}</div>
+                          <div>{item.status === 'approved' ? (item.requestType === 'lease_termination' ? 'Approved — lease terminated' : 'Reviewed by Admin') : 'Rejected by Admin'}</div>
                           {item.reviewReason ? <small>{item.reviewReason}</small> : null}
                           {item.reviewedAt ? <small>{new Date(item.reviewedAt).toLocaleString()}</small> : null}
                         </div>
