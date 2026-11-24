@@ -68,7 +68,7 @@ export default function ApprovalRequests({ role, token, onShare }) {
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
-    if (isAdmin) return undefined;
+    if (isAdmin || form.requestType !== 'exceptional_expense') return undefined;
     let active = true;
     request('/api/approval-requests/options')
       .then((data) => {
@@ -81,7 +81,7 @@ export default function ApprovalRequests({ role, token, onShare }) {
         if (active) setError(err.message || 'Unable to load expense request options.');
       });
     return () => { active = false; };
-  }, [isAdmin, request]);
+  }, [isAdmin, form.requestType, request]);
 
   const submit = async (event) => {
     event.preventDefault();
