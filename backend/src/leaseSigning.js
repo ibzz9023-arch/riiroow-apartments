@@ -24,7 +24,11 @@ export const decodeSignaturePng = (dataUrl) => {
     buffer.length > SIGNATURE_PNG_MAX_BYTES ||
     buffer.toString('base64') !== match[1] ||
     buffer.length < 45 ||
-    !buffer.subarray(0, 8).equals(pngHeader)
+    !buffer.subarray(0, 8).equals(pngHeader) ||
+    buffer.readUInt32BE(16) < 1 ||
+    buffer.readUInt32BE(16) > 3000 ||
+    buffer.readUInt32BE(20) < 1 ||
+    buffer.readUInt32BE(20) > 1200
   ) {
     throw Object.assign(new Error('Signature image is invalid or exceeds 2 MB.'), { statusCode: 400 });
   }
