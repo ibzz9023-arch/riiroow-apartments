@@ -2575,7 +2575,28 @@ const handleLogin = async (event) => {
               >
                 Move-out Request
               </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => setQrActiveService('lease-signing')}
+              >
+                Review & Sign Lease
+              </button>
             </div>
+          ) : null}
+
+          {qrTenantToken && qrActiveService === 'lease-signing' ? (
+            <section className="panel" style={{ marginTop: '16px' }}>
+              <div className="panel-header">
+                <h3>Review & Sign Lease</h3>
+                <button className="small-btn" type="button" onClick={() => setQrActiveService('')}>Back</button>
+              </div>
+              <LeaseSigning
+                requestJson={requestJson}
+                tenantAccessToken={qrTenantToken}
+                unitNumber={qrUnitNumber}
+              />
+            </section>
           ) : null}
 
           {qrTenantToken && qrActiveService === 'maintenance' && qrMaintenanceSuccess ? (
