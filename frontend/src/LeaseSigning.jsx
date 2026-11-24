@@ -4,7 +4,7 @@ const canvasWidth = 1400;
 const canvasHeight = 420;
 
 export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAccessToken = '', unitNumber = '' }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(tenantAccessToken));
   const [session, setSession] = useState(null);
   const [tenantLease, setTenantLease] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -184,7 +184,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
             <p className="muted">Tenant signs through the PIN-verified unit QR portal; management signs separately using the manager account.</p>
           </div>
           <button className="primary-btn" type="button" onClick={() => setOpen(true)}>
-            Continue manager signing
+            {isTenantFlow ? 'Review and sign lease' : 'Continue manager signing'}
           </button>
         </div>
       </div>
