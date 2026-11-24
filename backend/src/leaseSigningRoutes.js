@@ -139,6 +139,35 @@ const sessionResponse = (session) => ({
   documentReady: session.status === 'signed',
 });
 
+const cleanupSignatureFiles = async (session) => {
+  const paths = [session?.tenant_signature_path, session?.manager_signature_path].filter(Boolean);
+  if (!paths.length) return;
+
+  try {
+    const { error } = await supabaseServiceRole.storage.from(BUCKET).remove(paths);
+    if (error) {
+      console.warn('Temporary lease signature images could not be removed:', error.message || error);
+      return;
+    }
+
+    const { error: updateError } = await supabaseServiceRole
+      .from('lease_signing_sessions')
+      .update({
+        tenant_signature_path: null,
+        manager_signature_path: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', session.id);
+    if (updateError) {
+      console.warn('Temporary lease signature paths could not be cleared:', updateError.message || updateError);
+    }
+  } catch (error) {
+    // The signed PDF is the permanent record. Cleanup must never undo a
+    // successful signing operation; a later manager status check retries it.
+    console.warn('Temporary lease signature cleanup failed:', error?.message || error);
+  }
+};
+
 const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, actorUserId = null, actorName = null, metadata = {} }) => {
   const { error } = await supabaseServiceRole.from('lease_signing_events').insert([{
     lease_id: leaseId,
@@ -155,7 +184,10 @@ const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, ac
 };
 
 const finalizeSession = async (session, appOrigin) => {
-  if (session.status === 'signed' && session.final_document_id) return sessionResponse(session);
+  if (session.status === 'signed' && session.final_document_id) {
+    await cleanupSignatureFiles(session);
+    return sessionResponse(session);
+  }
   const current = await getLeaseAndTenant(session.lease_id);
   if (!current || current.leaseHash !== session.lease_hash) {
     throw Object.assign(new Error('Lease details changed after signing. This signing version cannot be finalized; management must prepare a new version for both parties.'), { statusCode: 409 });
@@ -274,6 +306,7 @@ const finalizeSession = async (session, appOrigin) => {
     actorType: 'system',
     metadata: { documentId, sha256: documentHash, fileSize: finalPdf.length },
   });
+  await cleanupSignatureFiles(updated);
   return sessionResponse(updated);
 };
 
@@ -301,6 +334,7 @@ tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSessio
       .limit(1)
       .maybeSingle();
     if (error) throw error;
+    if (session?.status === 'signed' && session.final_document_id) await cleanupSignatureFiles(session);
     return res.json({
       lease: {
         id: current.lease.id,
@@ -393,6 +427,7 @@ leaseSigningRouter.get('/:id/signing', managerOnly, async (req, res) => {
       .limit(1)
       .maybeSingle();
     if (error) throw error;
+    if (data?.status === 'signed' && data.final_document_id) await cleanupSignatureFiles(data);
     return res.json({ session: data ? sessionResponse(data) : null });
   } catch (error) {
     return sendError(res, error, 'Unable to load lease signing status.');
@@ -414,6 +449,7 @@ leaseSigningRouter.post('/:id/signing/start', managerOnly, async (req, res) => {
       .maybeSingle();
     if (existingError) throw existingError;
     if (existing && existing.lease_hash === current.leaseHash) {
+      if (existing.status === 'signed' && existing.final_document_id) await cleanupSignatureFiles(existing);
       return res.json({ session: sessionResponse(existing) });
     }
     const { data: session, error } = await supabaseServiceRole
