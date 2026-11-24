@@ -4,6 +4,7 @@ import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
+import TenantQrShare from './TenantQrShare.jsx';
 
 const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
@@ -4524,6 +4525,10 @@ const handleLogin = async (event) => {
 
                     {leaseDocumentsError ? <p className="error-text" role="alert">{leaseDocumentsError}</p> : null}
                     {leaseDocumentsLoading ? <p role="status">Loading lease documents…</p> : null}
+                    {['admin', 'manager'].includes(role) ? (
+                      <TenantQrShare unitNumber={selectedLeaseForDocuments.unitNumber ?? selectedLeaseForDocuments.unit_number} />
+                    ) : null}
+
                     {['admin', 'manager'].includes(role) ? (
                       <LeaseSigning
                         lease={selectedLeaseForDocuments}
