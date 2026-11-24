@@ -7,7 +7,7 @@
 3. The tenant reviews the lease terms and writes a signature using Apple Pencil or finger input. The API accepts this only from that lease's active PIN-verified tenant QR session.
 4. After the tenant signature is saved, the manager refreshes signing status and signs from the authenticated manager account.
 5. The API generates an A4 PDF, records its SHA-256 digest, and stores it in the existing private `lease-documents` bucket and `lease_documents` table as `document_type = 'signed_lease'`.
-6. The signed PDF includes each signer's independent server timestamp and the existing lease-document QR link. The tenant QR archive lists the generated signed lease separately from manually uploaded supporting documents.
+6. The signed PDF includes each signer's independent server timestamp. The existing QR code printed at the end of the lease continues to open the same tenant document archive, where the generated signed lease is listed separately from manually uploaded supporting documents.
 
 The same QR link continues to resolve to the current document list, so later manual uploads remain visible without reprinting the QR.
 
