@@ -139,6 +139,21 @@ const sessionResponse = (session) => ({
   documentReady: session.status === 'signed',
 });
 
+const recordSigningEvent = async ({ leaseId, sessionId, eventType, actorType, actorUserId = null, actorName = null, metadata = {} }) => {
+  const { error } = await supabaseServiceRole.from('lease_signing_events').insert([{
+    lease_id: leaseId,
+    session_id: sessionId,
+    event_type: eventType,
+    actor_type: actorType,
+    actor_user_id: actorUserId,
+    actor_name: actorName,
+    metadata,
+  }]);
+  if (error) {
+    console.error('Lease signing audit event could not be recorded:', eventType, error.message || error);
+  }
+};
+
 const finalizeSession = async (session, appOrigin) => {
   if (session.status === 'signed' && session.final_document_id) return sessionResponse(session);
   if (!session.tenant_signature_path || !session.manager_signature_path || !session.tenant_signed_at || !session.manager_signed_at) {
@@ -241,6 +256,13 @@ const finalizeSession = async (session, appOrigin) => {
     .select('*')
     .single();
   if (updateError) throw updateError;
+  await recordSigningEvent({
+    leaseId: session.lease_id,
+    sessionId: session.id,
+    eventType: 'signed_pdf_generated',
+    actorType: 'system',
+    metadata: { documentId, sha256: documentHash, fileSize: pdf.length },
+  });
   return sessionResponse(updated);
 };
 
@@ -330,6 +352,14 @@ leaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requi
       await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
       return res.status(409).json({ error: 'The tenant signature was already submitted.' });
     }
+    await recordSigningEvent({
+      leaseId: current.lease.id,
+      sessionId: session.id,
+      eventType: 'tenant_signed',
+      actorType: 'tenant',
+      actorName: current.tenant.name,
+      metadata: { signatureSha256: crypto.createHash('sha256').update(signature).digest('hex') },
+    });
     return res.json({ session: sessionResponse(updated) });
   } catch (error) {
     return sendError(res, error, 'Unable to save the tenant signature.');
@@ -382,6 +412,14 @@ leaseSigningRouter.post('/:id/signing/start', managerOnly, async (req, res) => {
       .select('*')
       .single();
     if (error) throw error;
+    await recordSigningEvent({
+      leaseId: req.params.id,
+      sessionId: session.id,
+      eventType: existing ? 'lease_terms_changed' : 'session_created',
+      actorType: 'manager',
+      actorUserId: req.auth.sub,
+      metadata: { leaseHash: current.leaseHash },
+    });
     return res.status(201).json({ session: sessionResponse(session) });
   } catch (error) {
     return sendError(res, error, 'Unable to start lease signing.');
@@ -462,6 +500,15 @@ leaseSigningRouter.post('/:id/signing/:sessionId/signature', managerOnly, async 
       await supabaseServiceRole.storage.from(BUCKET).remove([storagePath]);
       throw updateError;
     }
+    await recordSigningEvent({
+      leaseId: req.params.id,
+      sessionId: session.id,
+      eventType: 'manager_signed',
+      actorType: 'manager',
+      actorUserId: req.auth.sub,
+      actorName: signerName,
+      metadata: { signatureSha256: crypto.createHash('sha256').update(signature).digest('hex') },
+    });
     if (signerType === 'manager') {
       try {
         return res.json({ session: await finalizeSession(updated, process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`) });
