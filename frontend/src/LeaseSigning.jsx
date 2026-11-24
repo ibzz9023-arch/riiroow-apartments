@@ -376,12 +376,15 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
           <p>Both signatures have been saved. The final PDF is available in this lease’s Documents list and through its QR code.</p>
           <p className="muted">Tenant: {session.tenantSignedAt ? new Date(session.tenantSignedAt).toLocaleString() : '—'}</p>
           <p className="muted">Manager: {session.managerSignedAt ? new Date(session.managerSignedAt).toLocaleString() : '—'}</p>
-          {!isTenantFlow ? (
+          {!isTenantFlow && session.canRegeneratePdf ? (
             <div className="form-actions">
               <button className="small-btn" type="button" onClick={regenerateSignedPdf} disabled={saving}>
                 {saving ? 'Preparing corrected copy…' : 'Create corrected PDF copy'}
               </button>
             </div>
+          ) : null}
+          {!isTenantFlow && !session.canRegeneratePdf ? (
+            <p className="muted">This lease was signed before secure signature retention was added. Its original signed PDF is preserved, but the original signature files are unavailable for safe regeneration.</p>
           ) : null}
         </div>
       ) : null}
