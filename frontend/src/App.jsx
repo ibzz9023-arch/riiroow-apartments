@@ -2353,6 +2353,39 @@ const handleLogin = async (event) => {
       return;
     }
 
+    const leaseId = String(lease.id || '');
+    const isDatabaseLease = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leaseId);
+    if (isDatabaseLease) {
+      try {
+        const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\\/$/, '');
+        const response = await fetch(`${apiBaseUrl}/api/leases/${encodeURIComponent(leaseId)}/print`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Unable to prepare the lease for printing.');
+        }
+        const pdfBlob = await response.blob();
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        let printStarted = false;
+        const startPrint = () => {
+          if (printStarted || printWindow.closed) return;
+          printStarted = true;
+          printWindow.focus();
+          printWindow.print();
+        };
+        printWindow.location.href = pdfUrl;
+        printWindow.addEventListener('load', () => setTimeout(startPrint, 500), { once: true });
+        setTimeout(startPrint, 1800);
+        setTimeout(() => URL.revokeObjectURL(pdfUrl), 120000);
+      } catch (printError) {
+        if (!printWindow.closed) printWindow.close();
+        setError(printError.message || 'Unable to generate the lease PDF.');
+      }
+      return;
+    }
+
+    // Local-only fallback records continue to use the browser print view.
     let tenant = tenants.find(
       (item) => String(item.id) === String(lease.tenantId)
     );
