@@ -16,6 +16,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   const strokesRef = useRef([]);
   const activeStrokeRef = useRef(null);
   const drawingRef = useRef(false);
+  const activePointerIdRef = useRef(null);
 
   const isTenantFlow = Boolean(tenantAccessToken);
   const displayLease = lease || tenantLease || {};
@@ -91,6 +92,11 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
     strokesRef.current.forEach((stroke) => {
       if (!stroke.length) return;
       context.beginPath();
+      if (stroke.length === 1) {
+        context.arc(stroke[0].x, stroke[0].y, 2.5, 0, Math.PI * 2);
+        context.fill();
+        return;
+      }
       context.moveTo(stroke[0].x, stroke[0].y);
       stroke.slice(1).forEach((point) => context.lineTo(point.x, point.y));
       context.stroke();
@@ -98,14 +104,21 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   };
 
   const startStroke = (event) => {
-    if (saving) return;
+    if (saving || drawingRef.current) return;
     event.preventDefault();
     const canvas = canvasRef.current;
+    if (!canvas) return;
     canvas.setPointerCapture?.(event.pointerId);
     drawingRef.current = true;
+    activePointerIdRef.current = event.pointerId;
     activeStrokeRef.current = [pointFromEvent(event)];
     const context = canvas.getContext('2d');
     const point = activeStrokeRef.current[0];
+    // Render a dot immediately so a deliberate tap is still a visible mark.
+    context.beginPath();
+    context.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
+    context.fillStyle = '#171717';
+    context.fill();
     context.beginPath();
     context.moveTo(point.x, point.y);
     context.lineWidth = 5;
@@ -115,7 +128,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   };
 
   const continueStroke = (event) => {
-    if (!drawingRef.current || !activeStrokeRef.current) return;
+    if (!drawingRef.current || !activeStrokeRef.current || event.pointerId !== activePointerIdRef.current) return;
     event.preventDefault();
     const point = pointFromEvent(event);
     activeStrokeRef.current.push(point);
@@ -125,11 +138,12 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   };
 
   const finishStroke = (event) => {
-    if (!drawingRef.current || !activeStrokeRef.current) return;
+    if (!drawingRef.current || !activeStrokeRef.current || event.pointerId !== activePointerIdRef.current) return;
     event.preventDefault();
     strokesRef.current.push(activeStrokeRef.current);
     activeStrokeRef.current = null;
     drawingRef.current = false;
+    activePointerIdRef.current = null;
     setHasInk(true);
   };
 
@@ -137,6 +151,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
     strokesRef.current = [];
     activeStrokeRef.current = null;
     drawingRef.current = false;
+    activePointerIdRef.current = null;
     setHasInk(false);
     drawStrokes();
   };
