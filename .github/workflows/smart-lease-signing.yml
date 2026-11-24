@@ -29,10 +29,12 @@ jobs:
         run: npm install --prefix backend --no-audit --no-fund
       - name: Verify clean backend lockfile installation
         run: npm ci --prefix backend --no-audit --no-fund
-      - name: Run backend tests
-        run: npm test --prefix backend
       - name: Install frontend dependencies
         run: npm ci --prefix frontend --no-audit --no-fund
+      - name: Run backend tests
+        run: npm test --prefix backend
+        env:
+          NODE_OPTIONS: --experimental-test-module-mocks
       - name: Build frontend
         run: npm run build --prefix frontend
       - name: Upload generated backend lockfile for review
