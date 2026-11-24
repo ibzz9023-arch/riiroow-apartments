@@ -516,7 +516,7 @@ const [user, setUser] = useState(null);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const isTenantQrAction = /^\/api\/public\/qr\/[^/]+\/(maintenance|payment-notification|move-out-request)$/.test(path);
+      const isTenantQrAction = /^\/api\/public\/qr\/[^/]+\/(maintenance|payment-notification|move-out-request|lease-signing)(?:\/|$)/.test(path);
       if ((response.status === 401 || response.status === 403) && isTenantQrAction) {
         setQrTenantToken('');
         setQrPaymentVerified(false);
