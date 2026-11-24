@@ -81,9 +81,14 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
 
     doc.moveTo(leftX, signatureY + 158).lineTo(leftX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
     doc.moveTo(rightX, signatureY + 158).lineTo(rightX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
-    doc.moveDown(12);
+    doc.moveDown(2);
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
     doc.text('Each signing date above is recorded independently by the Riiroow server (UTC).');
+    doc.moveDown(1.5);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#171717').text('LEASE DOCUMENT ARCHIVE');
+    doc.font('Helvetica').fontSize(8).fillColor('#555555').text('Scan this QR code to view this signed lease and other documents attached to this lease.');
+    doc.moveDown(0.5);
+    doc.image(qrBuffer, { width: 112, height: 112, align: 'center' });
     doc.end();
   });
