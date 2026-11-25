@@ -641,6 +641,7 @@ const [user, setUser] = useState(null);
   const [leaseDocumentsError, setLeaseDocumentsError] = useState('');
   const [leaseDocumentFiles, setLeaseDocumentFiles] = useState([]);
   const [leaseDocumentsUploading, setLeaseDocumentsUploading] = useState(false);
+  const [signedLeaseRegenerating, setSignedLeaseRegenerating] = useState(false);
   const [leaseDocumentAccessStatus, setLeaseDocumentAccessStatus] = useState({ enabled: false, revokedAt: null });
   const [leaseDocumentAccessUrl, setLeaseDocumentAccessUrl] = useState('');
   const [leaseDocumentQrDataUrl, setLeaseDocumentQrDataUrl] = useState('');
@@ -907,6 +908,33 @@ const [user, setUser] = useState(null);
       setLeaseDocumentsError(uploadError.message || 'Unable to upload lease documents.');
     } finally {
       setLeaseDocumentsUploading(false);
+    }
+  };
+
+  const regenerateCorrectedSignedLease = async () => {
+    if (!selectedLeaseForDocuments || signedLeaseRegenerating) return;
+    setSignedLeaseRegenerating(true);
+    setLeaseDocumentsError('');
+    try {
+      const leaseId = encodeURIComponent(selectedLeaseForDocuments.id);
+      const signingStatus = await requestJson(`/api/leases/${leaseId}/signing`);
+      const session = signingStatus?.session;
+      if (!session || session.status !== 'signed' || !session.documentReady) {
+        throw new Error('This lease does not have a completed signing record.');
+      }
+      if (!session.canRegeneratePdf || !session.id) {
+        throw new Error('The original signature images are unavailable. The existing signed PDF has been preserved and cannot be rebuilt automatically.');
+      }
+      const result = await requestJson(
+        `/api/leases/${leaseId}/signing/${encodeURIComponent(session.id)}/regenerate-pdf`,
+        { method: 'POST', body: {} }
+      );
+      await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+      setInfoMessage(result.message || 'A corrected signed lease copy was added. The original signed PDF remains unchanged.');
+    } catch (regenerateError) {
+      setLeaseDocumentsError(regenerateError.message || 'Unable to generate the corrected signed lease copy.');
+    } finally {
+      setSignedLeaseRegenerating(false);
     }
   };
 
@@ -4688,6 +4716,17 @@ const handleLogin = async (event) => {
                       {leaseDocuments.some((document) => document.documentType === 'signed_lease') ? (
                         <>
                           <h4>Automatically generated signed lease</h4>
+                          <p className="muted">If an older signed PDF is missing the standard agreement clauses, generate a corrected archival copy using the signatures already stored. The original signed PDF will remain preserved.</p>
+                          <div className="form-actions">
+                            <button
+                              className="small-btn"
+                              type="button"
+                              onClick={regenerateCorrectedSignedLease}
+                              disabled={signedLeaseRegenerating || leaseDocumentsLoading}
+                            >
+                              {signedLeaseRegenerating ? 'Generating corrected copy…' : 'Generate corrected signed lease'}
+                            </button>
+                          </div>
                           {leaseDocuments.filter((document) => document.documentType === 'signed_lease').map((document) => (
                             <div className="panel" key={document.id}>
                               <strong>{document.originalName}</strong>
