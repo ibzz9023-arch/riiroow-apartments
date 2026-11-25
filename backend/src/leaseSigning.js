@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import PDFDocument from 'pdfkit';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -266,12 +267,20 @@ export const createSignedLeasePdf = ({
       });
     y += 28.5;
     doc.font('Helvetica-Bold').fontSize(13.5).fillColor('#222222')
-      .text('LEASE SUMMARY', PAGE.margin, y, {
+      .text('RESIDENTIAL LEASE AGREEMENT', PAGE.margin, y, {
         width: LAYOUT.contentWidth,
         align: 'center',
         lineBreak: false,
       });
     y += 23.25;
+    if (isLeaseRenewal(snapshot)) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#222222')
+        .text(LEASE_RENEWAL_STATEMENT, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+          align: 'center',
+        });
+      y += 16;
+    }
     doc.font('Helvetica').fontSize(9).fillColor('#666666')
       .text('Lease ID: ' + String(snapshot.id || '—'), PAGE.margin, y, {
         width: LAYOUT.contentWidth,
@@ -330,6 +339,28 @@ export const createSignedLeasePdf = ({
         });
     y += notesHeight;
 
+    y = addSectionHeading(doc, '5. Agreement Clauses', y);
+    for (const clause of LEASE_AGREEMENT_CLAUSES) {
+      const titleHeight = doc.font('Helvetica-Bold').fontSize(9.5)
+        .heightOfString(clause.title, { width: LAYOUT.contentWidth });
+      const bodyHeight = doc.font('Helvetica').fontSize(9.5)
+        .heightOfString(clause.body, { width: LAYOUT.contentWidth, lineGap: 1.5 });
+      y = addPageIfNeeded(doc, y, titleHeight + bodyHeight + 12);
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#222222')
+        .text(clause.title, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+        });
+      y += titleHeight + 2;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#222222')
+        .text(clause.body, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+          lineGap: 1.5,
+        });
+      y += bodyHeight + 9;
+    }
+
+    // Keep both signature blocks together, after all agreement clauses.
+    y = addPageIfNeeded(doc, y, 41.25 + LAYOUT.signatureHeight + 12);
     y = drawSignatureBlock(doc, {
       y,
       tenantSignature,
