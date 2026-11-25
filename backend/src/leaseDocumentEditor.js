@@ -26,6 +26,9 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
   if (!Array.isArray(textItems) || textItems.length > MAX_TEXT_ITEMS || !Array.isArray(images) || images.length > MAX_IMAGES || !Array.isArray(deletePageIndices) || deletePageIndices.length > 100) {
     throw Object.assign(new Error('The PDF edit contains too many changes.'), { statusCode: 400 });
   }
+  if (isSignedSource && images.length) {
+    throw Object.assign(new Error('Images and signature pictures cannot be inserted into a previously signed lease copy. Use Smart Lease Signing to capture fresh signatures on a new lease version.'), { statusCode: 400 });
+  }
   const pdf = await PdfLibDocument.load(sourcePdf, { updateMetadata: false });
   const pages = pdf.getPages();
   if (!pages.length) throw Object.assign(new Error('The PDF has no pages.'), { statusCode: 400 });
