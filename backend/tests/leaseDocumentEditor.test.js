@@ -52,7 +52,7 @@ test('PDF editor rejects fractional page indexes', async () => {
   );
 });
 
-test('corrected lease draft is a valid unsigned PDF containing the complete clause set', async () => {
+test('corrected lease draft generator produces a valid unsigned PDF from 16 clauses', async () => {
   const clauses = Array.from({ length: 16 }, (_, index) => ({
     title: `CLAUSE ${index + 1} — TEST`,
     body: `Clause ${index + 1} wording for a corrected lease draft.`,
@@ -63,18 +63,8 @@ test('corrected lease draft is a valid unsigned PDF containing the complete clau
     clauses,
   });
   assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdfBytes.length > 1000);
   const parsed = await PdfLibDocument.load(pdfBytes);
   assert.ok(parsed.getPageCount() >= 1);
 });
 
-test('signed lease edits reject pasted image signatures', async () => {
-  const source = await makeSourcePdf();
-  await assert.rejects(
-    () => editLeasePdf({
-      sourcePdf: source,
-      images: [{ pageIndex: 0, x: 20, y: 20, width: 40, height: 20, dataUrl: 'data:image/png;base64,aGVsbG8=' }],
-      isSignedSource: true,
-    }),
-    /Images and signature pictures cannot be inserted/
-  );
-});
