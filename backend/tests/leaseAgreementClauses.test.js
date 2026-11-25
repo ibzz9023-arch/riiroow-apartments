@@ -24,7 +24,7 @@ test('Additional Notes excludes renewal metadata and legacy duplicated Clause 1 
   assert.equal(getLeaseAdditionalNotes({ notes: 'Lease renewed from 2026-11-30.' }), '');
   assert.equal(getLeaseAdditionalNotes({ notes: LEASE_AGREEMENT_CLAUSES[0].body }), '');
   assert.equal(
-    getLeaseAdditionalNotes({ notes: LEASE_AGREEMENT_CLAUSES[0].title + '\\n' + LEASE_AGREEMENT_CLAUSES[0].body }),
+    getLeaseAdditionalNotes({ notes: LEASE_AGREEMENT_CLAUSES[0].title + '\n' + LEASE_AGREEMENT_CLAUSES[0].body }),
     '',
   );
   assert.equal(
