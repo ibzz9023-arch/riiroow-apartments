@@ -4,6 +4,8 @@ import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
+import LeaseDocumentEditor from './LeaseDocumentEditor.jsx';
+import LeaseClauseEditor from './LeaseClauseEditor.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
 import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
@@ -637,6 +639,7 @@ const [user, setUser] = useState(null);
   });
   const [selectedLeaseForDocuments, setSelectedLeaseForDocuments] = useState(null);
   const [leaseDocuments, setLeaseDocuments] = useState([]);
+  const [leaseDocumentEditing, setLeaseDocumentEditing] = useState(null);
   const [leaseDocumentsLoading, setLeaseDocumentsLoading] = useState(false);
   const [leaseDocumentsError, setLeaseDocumentsError] = useState('');
   const [leaseDocumentFiles, setLeaseDocumentFiles] = useState([]);
@@ -867,6 +870,7 @@ const [user, setUser] = useState(null);
   const openLeaseDocuments = async (lease) => {
     setSelectedLeaseForDocuments(lease);
     setLeaseDocuments([]);
+    setLeaseDocumentEditing(null);
     setLeaseDocumentFiles([]);
     setLeaseDocumentsError('');
     setLeaseDocumentAccessStatus({ enabled: false, revokedAt: null });
@@ -4735,6 +4739,7 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                                <button className="small-btn" type="button" onClick={() => setLeaseDocumentEditing(document)}>Edit PDF</button>
                               </div>
                             </div>
                           ))}
@@ -4753,6 +4758,7 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                                {document.mimeType === 'application/pdf' ? <button className="small-btn" type="button" onClick={() => setLeaseDocumentEditing(document)}>Edit PDF</button> : null}
                               </div>
                             </div>
                           ))}
@@ -4762,6 +4768,26 @@ const handleLogin = async (event) => {
                         <EmptyState title="No lease documents" message="The signed lease and manually uploaded supporting documents will appear here." />
                       ) : null}
                     </div>
+
+                    {['admin', 'manager'].includes(role) ? (
+                      <LeaseClauseEditor
+                        lease={selectedLeaseForDocuments}
+                        requestJson={requestJson}
+                        onSaved={() => refreshLeaseDocuments(selectedLeaseForDocuments.id)}
+                      />
+                    ) : null}
+                    {leaseDocumentEditing ? (
+                      <LeaseDocumentEditor
+                        lease={selectedLeaseForDocuments}
+                        document={leaseDocumentEditing}
+                        requestJson={requestJson}
+                        onClose={() => setLeaseDocumentEditing(null)}
+                        onSaved={() => {
+                          setLeaseDocumentEditing(null);
+                          return refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                        }}
+                      />
+                    ) : null}
 
                     <div className="panel" style={{ marginTop: '16px' }}>
                       <div className="panel-header">
