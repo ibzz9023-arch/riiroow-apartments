@@ -2438,7 +2438,7 @@ const handleLogin = async (event) => {
       signingSession?.documentReady === true;
     const isSigningInProgress = signingStatusVerified &&
       signingSession &&
-      signingSession.status !== 'signed';
+      !isExecutedLease;
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -2791,7 +2791,7 @@ const handleLogin = async (event) => {
   ` : isSigningInProgress ? `
     <section class="execution-record">
       <h2>Signing Status</h2>
-      <p><strong>SIGNING IN PROGRESS — NOT AN EXECUTED LEASE.</strong></p>
+      <p><strong>${signingSession.status === 'signed' ? 'SIGNING RECORD INCOMPLETE — VERIFY BEFORE RELYING ON THIS COPY.' : 'SIGNING IN PROGRESS — NOT AN EXECUTED LEASE.'}</strong></p>
       <p>Tenant signed: ${signingSession.tenantSignedAt ? safe(formatLeaseDate(signingSession.tenantSignedAt)) : 'Not yet signed'}</p>
       <p>Manager signed: ${signingSession.managerSignedAt ? safe(formatLeaseDate(signingSession.managerSignedAt)) : 'Not yet signed'}</p>
       <p>This document is not the final executed lease.</p>
