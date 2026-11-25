@@ -18,7 +18,7 @@ import {
 } from './src/moveOutRequests.js';
 import { financialRouter } from './src/financialRoutes.js';
 import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigningRoutes.js';
-import { editLeasePdf, createCorrectedLeaseDraftPdf } from './src/leaseDocumentEditor.js';
+import { editLeasePdf, createCorrectedLeaseDraftDocx } from './src/leaseDocumentEditor.js';
 import {
   submitApprovalRequest,
   listApprovalRequests,
@@ -358,15 +358,10 @@ const createOrReadLeaseDocumentAccess = async (leaseId, { regenerate = false, al
   throw insertError;
 };
 
-const signLeaseDocument = async (row) => {
-  const bucket = supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET);
-  const [{ data: previewData, error: previewError }, { data: downloadData, error: downloadError }] =
-    await Promise.all([
-      bucket.createSignedUrl(row.storage_path, 600),
-      bucket.createSignedUrl(row.storage_path, 600, { download: row.original_name }),
-    ]);
-  if (previewError) throw previewError;
-  if (downloadError) throw downloadError;
+const signLeaseDocument = async (row, { leaseId, publicToken } = {}) => {
+  const basePath = publicToken
+    ? `/api/public/lease-documents/${encodeURIComponent(publicToken)}/${encodeURIComponent(row.id)}`
+    : `/api/leases/${encodeURIComponent(leaseId)}/documents/${encodeURIComponent(row.id)}`;
   return {
     id: row.id,
     originalName: row.original_name,
@@ -374,9 +369,52 @@ const signLeaseDocument = async (row) => {
     fileSize: Number(row.file_size),
     documentType: row.document_type || 'manual',
     createdAt: row.created_at,
-    previewUrl: previewData.signedUrl,
-    downloadUrl: downloadData.signedUrl,
+    previewUrl: `${basePath}/file`,
+    downloadUrl: `${basePath}/download`,
   };
+};
+
+const streamLeaseDocument = async ({ leaseId, documentId, res, download = false }) => {
+  const { data: row, error: rowError } = await supabaseServiceRole
+    .from('lease_documents')
+    .select('id, lease_id, original_name, mime_type, storage_path')
+    .eq('id', documentId)
+    .eq('lease_id', leaseId)
+    .maybeSingle();
+  if (rowError) throw rowError;
+  if (!row) return res.status(404).json({ error: 'Lease document not found.' });
+
+  const { data: blob, error: downloadError } = await supabaseServiceRole.storage
+    .from(LEASE_DOCUMENT_BUCKET).download(row.storage_path);
+  if (downloadError) throw downloadError;
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const mimeType = String(row.mime_type || 'application/octet-stream');
+  const inline = !download && ['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType);
+  const safeName = String(row.original_name || 'lease-document')
+    .replace(/[\\/\\r\\n\\"]/g, '_').replace(/[\\u0000-\\u001f\\u007f]/g, '').slice(0, 200) || 'lease-document';
+  res.set({
+    'Cache-Control': 'private, no-store, max-age=0',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Type': mimeType,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
+    'Content-Length': String(bytes.length),
+  });
+  return res.status(200).send(bytes);
+};
+
+const streamPublicLeaseDocument = async ({ token, documentId, res, download = false }) => {
+  if (!LEASE_DOCUMENT_TOKEN_PATTERN.test(String(token || ''))) {
+    return res.status(404).json({ error: 'This lease document link is invalid or no longer available.' });
+  }
+  const { data: access, error: accessError } = await supabaseServiceRole
+    .from('lease_document_access')
+    .select('lease_id')
+    .eq('token_hash', hashLeaseDocumentToken(token))
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (accessError) throw accessError;
+  if (!access) return res.status(404).json({ error: 'This lease document link is invalid or no longer available.' });
+  return streamLeaseDocument({ leaseId: access.lease_id, documentId, res, download });
 };
 
 const TENANT_PHOTO_BUCKET = 'tenant-photos';
@@ -726,6 +764,19 @@ app.delete('/api/tenants/:id', requireRoles('Admin'), async (req, res) => {
   }
 });
 
+const servePublicLeaseDocumentFile = (download) => async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store, max-age=0', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' });
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    return await streamPublicLeaseDocument({ token: req.params.token, documentId: req.params.documentId, res, download });
+  } catch (error) {
+    console.error('Public lease document file fetch error:', error?.message || error);
+    return res.status(500).json({ error: 'Unable to retrieve this lease document. Please contact property management.' });
+  }
+};
+app.get('/api/public/lease-documents/:token/:documentId/file', servePublicLeaseDocumentFile(false));
+app.get('/api/public/lease-documents/:token/:documentId/download', servePublicLeaseDocumentFile(true));
+
 app.get('/api/public/lease-documents/:token', async (req, res) => {
   res.set({
     'Cache-Control': 'no-store, max-age=0',
@@ -759,7 +810,7 @@ app.get('/api/public/lease-documents/:token', async (req, res) => {
       .order('created_at', { ascending: false });
     if (documentsError) throw documentsError;
 
-    const documents = await Promise.all((rows || []).map(signLeaseDocument));
+    const documents = await Promise.all((rows || []).map((row) => signLeaseDocument(row, { leaseId: access.lease_id, publicToken: token })));
     const { data: lease, error: leaseError } = await supabaseServiceRole
       .from('leases')
       .select('unit_number')
@@ -774,6 +825,21 @@ app.get('/api/public/lease-documents/:token', async (req, res) => {
     });
   }
 });
+
+const serveManagerLeaseDocumentFile = (download) => async (req, res) => {
+  res.set('Cache-Control', 'private, no-store, max-age=0');
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const lease = await findLeaseDocumentLease(req.params.id);
+    if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+    return await streamLeaseDocument({ leaseId: lease.id, documentId: req.params.documentId, res, download });
+  } catch (error) {
+    console.error('Lease document file fetch error:', error?.message || error);
+    return res.status(500).json({ error: 'Unable to retrieve this lease document.' });
+  }
+};
+app.get('/api/leases/:id/documents/:documentId/file', requireRoles('Admin', 'Manager', 'Accountant'), serveManagerLeaseDocumentFile(false));
+app.get('/api/leases/:id/documents/:documentId/download', requireRoles('Admin', 'Manager', 'Accountant'), serveManagerLeaseDocumentFile(true));
 
 app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountant'), async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -797,7 +863,7 @@ app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountan
     if (documentsError) throw documentsError;
     if (accessError) throw accessError;
 
-    const documents = await Promise.all((rows || []).map(signLeaseDocument));
+    const documents = await Promise.all((rows || []).map((row) => signLeaseDocument(row, { leaseId: lease.id })));
     return res.json({
       documents,
       access: {
@@ -972,29 +1038,35 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
       security_deposit: securityDeposit,
     };
     const draftTenant = { ...tenant, name: tenantName };
-    const pdf = await createCorrectedLeaseDraftPdf({ lease: draftLease, tenant: draftTenant, clauses });
-    if (pdf.length > LEASE_DOCUMENT_MAX_SIZE) return res.status(413).json({ error: 'The corrected draft exceeds the 10 MB document limit.' });
+    const docx = createCorrectedLeaseDraftDocx({ lease: draftLease, tenant: draftTenant, clauses });
+    if (docx.length > LEASE_DOCUMENT_MAX_SIZE) return res.status(413).json({ error: 'The corrected Word document exceeds the 10 MB document limit.' });
     const id = crypto.randomUUID();
-    uploadedPath = `${lease.id}/drafts/${id}.pdf`;
-    const { error: uploadError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).upload(uploadedPath, pdf, {
-      contentType: 'application/pdf', upsert: false,
+    uploadedPath = `${lease.id}/drafts/${id}.docx`;
+    const mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const { error: uploadError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).upload(uploadedPath, docx, {
+      contentType: mimeType, upsert: false,
     });
     if (uploadError) throw uploadError;
+    const originalName = `CORRECTED_LEASE_DRAFT_REQUIRES_RESIGNING_${new Date().toISOString().replace(/[:.]/g, '-')}.docx`;
     const { data: document, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
-      lease_id: lease.id, original_name: `CORRECTED_LEASE_DRAFT_REQUIRES_RESIGNING_${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`,
-      storage_path: uploadedPath, mime_type: 'application/pdf', file_size: pdf.length,
+      lease_id: lease.id, original_name: originalName,
+      storage_path: uploadedPath, mime_type: mimeType, file_size: docx.length,
       document_type: 'manual', created_by: req.auth.sub,
     }]).select('id, original_name, created_at').single();
     if (insertError) throw insertError;
     uploadedPath = '';
-    return res.status(201).json({ document, message: 'Corrected draft saved separately. It is unsigned and does not replace the existing signed lease.' });
+    return res.status(201).json({
+      document,
+      downloadUrl: `/api/leases/${encodeURIComponent(lease.id)}/documents/${encodeURIComponent(document.id)}/download`,
+      message: 'Editable Word (.docx) lease draft exported and saved separately. It is unsigned and does not replace the existing signed lease.',
+    });
   } catch (error) {
     if (uploadedPath) {
       const { error: cleanupError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).remove([uploadedPath]);
-      if (cleanupError) console.warn('Corrected draft cleanup failed:', cleanupError.message || cleanupError);
+      if (cleanupError) console.warn('Corrected Word draft cleanup failed:', cleanupError.message || cleanupError);
     }
-    console.error('Corrected lease draft creation failed:', error?.message || error);
-    return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to create the corrected lease draft. The existing lease remains unchanged.' });
+    console.error('Corrected lease Word export failed:', error?.message || error);
+    return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to export the corrected Word document. The existing lease remains unchanged.' });
   }
 });
 
