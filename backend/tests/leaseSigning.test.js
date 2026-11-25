@@ -115,10 +115,10 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
   // PDFKit compresses page content streams; inspect the rendered text so
   // the manager identity cannot silently disappear from the signed copy.
   const pdfSource = pdf.toString('latin1');
-  const compressedStreams = [...pdfSource.matchAll(/<<[\\s\\S]*?\\/FlateDecode[\\s\\S]*?>>\\s*stream\\r?\\n([\\s\\S]*?)\\r?\\nendstream/g)];
+  const compressedStreams = [...pdfSource.matchAll(/<<[\s\S]*?\/FlateDecode[\s\S]*?>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/g)];
   const renderedText = compressedStreams
     .map((match) => inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1'))
-    .join('\\n');
+    .join('\n');
   assert.match(renderedText, /Test Tenant/);
   assert.match(renderedText, /Test Manager/);
 });
