@@ -5,6 +5,7 @@ import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
@@ -2407,12 +2408,43 @@ const handleLogin = async (event) => {
 
     const monthlyRent = formatCurrency(lease.monthlyRent);
     const securityDeposit = formatCurrency(lease.securityDeposit);
+    const formatLeaseDate = (value) => {
+      if (!value) return '—';
+      const raw = String(value);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? new Date(`${raw}T12:00:00+03:00`)
+        : new Date(raw);
+      return Number.isNaN(date.getTime())
+        ? raw
+        : new Intl.DateTimeFormat('en-GB', {
+            dateStyle: 'long',
+            timeZone: 'Africa/Mogadishu',
+          }).format(date);
+    };
+
+    let signingSession = null;
+    let signingStatusVerified = false;
+    try {
+      const signingStatus = await requestJson(
+        `/api/leases/${encodeURIComponent(lease.id)}/signing`
+      );
+      signingSession = signingStatus?.session || null;
+      signingStatusVerified = true;
+    } catch {
+      // Fail closed: never print blank signature lines when execution status is unknown.
+    }
+    const isExecutedLease = signingStatusVerified &&
+      signingSession?.status === 'signed' &&
+      signingSession?.documentReady === true;
+    const isSigningInProgress = signingStatusVerified &&
+      signingSession &&
+      !isExecutedLease;
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Riiroow Lease Agreement - ${safe(lease.id)}</title>
+  <title>Riiroow Apartments Residential Lease Agreement - ${safe(lease.id)}</title>
   <style>
     @page {
       size: A4;
@@ -2518,6 +2550,31 @@ const handleLogin = async (event) => {
 
     .clause {
       margin: 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .agreement-clauses > h2 {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .execution-record {
+      margin: 30px 0;
+      padding: 14px;
+      border: 1px solid #999;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .execution-record h2 {
+      margin-top: 0;
+    }
+
+    .renewal-note {
+      margin: 10px 0 0;
+      font-weight: 700;
+      text-align: center;
     }
 
     .notes {
@@ -2663,8 +2720,9 @@ const handleLogin = async (event) => {
     <div class="brand-logo">
       <img src="${window.location.origin}${import.meta.env.BASE_URL}riiroow-logo.png" alt="Riiroow Apartments">
     </div>
-    <h1 class="brand">RIIROOW APARTMENT</h1>
-    <div class="subtitle">LEASE SUMMARY</div>
+    <h1 class="brand">RIIROOW APARTMENTS</h1>
+    <div class="subtitle">RESIDENTIAL LEASE AGREEMENT</div>
+    ${isLeaseRenewal(lease) ? `<p class="renewal-note">${safe(LEASE_RENEWAL_STATEMENT)}</p>` : ''}
     <div class="lease-id">Lease ID: ${safe(lease.id)}</div>
   </div>
 
@@ -2688,17 +2746,14 @@ const handleLogin = async (event) => {
   <h2>2. Lease Term</h2>
   <div class="details">
     <div class="detail">
-      <span class="label">Start Date:</span> ${safe(lease.startDate)}
+      <span class="label">Start Date:</span> ${safe(formatLeaseDate(lease.startDate))}
     </div>
     <div class="detail">
-      <span class="label">End Date:</span> ${safe(lease.endDate)}
+      <span class="label">End Date:</span> ${safe(formatLeaseDate(lease.endDate))}
     </div>
     <div class="detail">
       <span class="label">Lease Status:</span>
       <span class="status">${safe(lease.status)}</span>
-    </div>
-    <div class="detail">
-      <span class="label">Unit:</span> ${safe(lease.unitNumber)}
     </div>
   </div>
 
@@ -2715,24 +2770,56 @@ const handleLogin = async (event) => {
   <h2>4. Additional Notes</h2>
   <div class="notes">${safe(lease.notes || 'No additional notes.')}</div>
 
-  <div class="signatures">
-    <div class="signature">
-      <strong class="signature-title">Tenant Signature</strong>
-      <div class="signature-mark-space"></div>
-      <div class="signature-name">Name: ${safe(tenantName)}</div>
-      <div class="signature-date">Date: ____________________</div>
-    </div>
+  <section class="agreement-clauses">
+    <h2>5. Agreement Clauses</h2>
+    ${LEASE_AGREEMENT_CLAUSES.map((clause) => `
+      <div class="clause">
+        <strong>${safe(clause.title)}</strong>
+        <p>${safe(clause.body)}</p>
+      </div>
+    `).join('')}
+  </section>
 
-    <div class="signature authorized-signature">
-      <strong class="signature-title">Riiroow Apartment Management</strong>
-      <div class="signature-mark-space"></div>
-      <div class="signature-name">Name: ____________________</div>
-      <div class="signature-date">Date: ____________________</div>
+  ${isExecutedLease ? `
+    <section class="execution-record">
+      <h2>Execution Record</h2>
+      <p><strong>EXECUTED LEASE.</strong> Both parties completed the electronic signing process.</p>
+      <p>Tenant: ${safe(signingSession.tenantName || tenantName)} — ${safe(formatLeaseDate(signingSession.tenantSignedAt))} ${safe(signingSession.tenantSignedAt ? new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Africa/Mogadishu' }).format(new Date(signingSession.tenantSignedAt)) + ' EAT' : '')}</p>
+      <p>Manager: ${safe(signingSession.managerName || 'Riiroow Apartments Management')} — ${safe(formatLeaseDate(signingSession.managerSignedAt))} ${safe(signingSession.managerSignedAt ? new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Africa/Mogadishu' }).format(new Date(signingSession.managerSignedAt)) + ' EAT' : '')}</p>
+      <p>The executed PDF with signature images is available in the Lease Document Archive below. This printout is a lease copy, not a replacement for that signed PDF.</p>
+    </section>
+  ` : isSigningInProgress ? `
+    <section class="execution-record">
+      <h2>Signing Status</h2>
+      <p><strong>${signingSession.status === 'signed' ? 'SIGNING RECORD INCOMPLETE — VERIFY BEFORE RELYING ON THIS COPY.' : 'SIGNING IN PROGRESS — NOT AN EXECUTED LEASE.'}</strong></p>
+      <p>Tenant signed: ${signingSession.tenantSignedAt ? safe(formatLeaseDate(signingSession.tenantSignedAt)) : 'Not yet signed'}</p>
+      <p>Manager signed: ${signingSession.managerSignedAt ? safe(formatLeaseDate(signingSession.managerSignedAt)) : 'Not yet signed'}</p>
+      <p>This document is not the final executed lease.</p>
+    </section>
+  ` : signingStatusVerified ? `
+    <div class="signatures">
+      <div class="signature">
+        <strong class="signature-title">Tenant Signature</strong>
+        <div class="signature-mark-space"></div>
+        <div class="signature-name">Name: ${safe(tenantName)}</div>
+        <div class="signature-date">Date: ____________________</div>
+      </div>
+      <div class="signature authorized-signature">
+        <strong class="signature-title">Riiroow Apartments Management</strong>
+        <div class="signature-mark-space"></div>
+        <div class="signature-name">Name: ____________________</div>
+        <div class="signature-date">Date: ____________________</div>
+      </div>
     </div>
-  </div>
+  ` : `
+    <section class="execution-record">
+      <h2>Signing Status Not Verified</h2>
+      <p><strong>DO NOT TREAT THIS COPY AS PROOF THAT THE LEASE IS UNSIGNED.</strong> The signing status could not be checked. Verify the signing record before using this document for execution.</p>
+    </section>
+  `}
 
   <div class="footer">
-    Riiroow Apartment Management — Residential Lease Agreement
+    Riiroow Apartments Management — Residential Lease Agreement
   </div>
 
   <section class="lease-documents-qr">

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import PDFDocument from 'pdfkit';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -82,6 +83,19 @@ const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
+const formatLeaseDate = (value) => {
+  if (!value) return '—';
+  const raw = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T12:00:00+03:00`)
+    : new Date(raw);
+  return Number.isNaN(date.getTime())
+    ? raw
+    : new Intl.DateTimeFormat('en-GB', {
+        dateStyle: 'long',
+        timeZone: 'Africa/Mogadishu',
+      }).format(date);
+};
 
 const PAGE = { width: 595.28, height: 841.89, margin: 51.02 };
 const LAYOUT = {
@@ -173,7 +187,7 @@ const drawSignatureBlock = (doc, {
   doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
     .text('Tenant Signature', leftX, top + 6, { width: columnWidth, lineBreak: false });
   doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
-    .text('Riiroow Apartment Management', rightX, top + 6, { width: columnWidth, lineBreak: false });
+    .text('Riiroow Apartments Management', rightX, top + 6, { width: columnWidth, lineBreak: false });
 
   // Signatures are overlaid inside the blank line area of the original form.
   // They never change the baseline of the printed name or date fields.
@@ -259,19 +273,27 @@ export const createSignedLeasePdf = ({
     });
     y += LAYOUT.logoHeight + 4.5;
     doc.font('Helvetica-Bold').fontSize(16.5).fillColor('#222222')
-      .text('RIIROOW APARTMENT', PAGE.margin, y, {
+      .text('RIIROOW APARTMENTS', PAGE.margin, y, {
         width: LAYOUT.contentWidth,
         align: 'center',
         lineBreak: false,
       });
     y += 28.5;
     doc.font('Helvetica-Bold').fontSize(13.5).fillColor('#222222')
-      .text('LEASE SUMMARY', PAGE.margin, y, {
+      .text('RESIDENTIAL LEASE AGREEMENT', PAGE.margin, y, {
         width: LAYOUT.contentWidth,
         align: 'center',
         lineBreak: false,
       });
     y += 23.25;
+    if (isLeaseRenewal(snapshot)) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#222222')
+        .text(LEASE_RENEWAL_STATEMENT, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+          align: 'center',
+        });
+      y += 16;
+    }
     doc.font('Helvetica').fontSize(9).fillColor('#666666')
       .text('Lease ID: ' + String(snapshot.id || '—'), PAGE.margin, y, {
         width: LAYOUT.contentWidth,
@@ -304,10 +326,9 @@ export const createSignedLeasePdf = ({
 
     y = addSectionHeading(doc, '2. Lease Term', y);
     y = drawDetailsGrid(doc, [
-      ['Start Date', snapshot.start_date],
-      ['End Date', snapshot.end_date],
+      ['Start Date', formatLeaseDate(snapshot.start_date)],
+      ['End Date', formatLeaseDate(snapshot.end_date)],
       ['Lease Status', snapshot.status],
-      ['Unit', snapshot.unit_number ?? snapshot.unit_id],
     ], y);
 
     y = addSectionHeading(doc, '3. Rent and Security Deposit', y);
@@ -330,6 +351,39 @@ export const createSignedLeasePdf = ({
         });
     y += notesHeight;
 
+    const firstClause = LEASE_AGREEMENT_CLAUSES[0];
+    const firstClauseTitleHeight = doc.font('Helvetica-Bold').fontSize(9.5)
+      .heightOfString(firstClause.title, { width: LAYOUT.contentWidth });
+    const firstClauseBodyHeight = doc.font('Helvetica').fontSize(9.5)
+      .heightOfString(firstClause.body, { width: LAYOUT.contentWidth, lineGap: 1.5 });
+    const agreementHeadingHeight = 18.75 + 23.625 + 9.75;
+    y = addPageIfNeeded(
+      doc,
+      y,
+      agreementHeadingHeight + firstClauseTitleHeight + firstClauseBodyHeight + 12,
+    );
+    y = addSectionHeading(doc, '5. Agreement Clauses', y);
+    for (const clause of LEASE_AGREEMENT_CLAUSES) {
+      const titleHeight = doc.font('Helvetica-Bold').fontSize(9.5)
+        .heightOfString(clause.title, { width: LAYOUT.contentWidth });
+      const bodyHeight = doc.font('Helvetica').fontSize(9.5)
+        .heightOfString(clause.body, { width: LAYOUT.contentWidth, lineGap: 1.5 });
+      y = addPageIfNeeded(doc, y, titleHeight + bodyHeight + 12);
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#222222')
+        .text(clause.title, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+        });
+      y += titleHeight + 2;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#222222')
+        .text(clause.body, PAGE.margin, y, {
+          width: LAYOUT.contentWidth,
+          lineGap: 1.5,
+        });
+      y += bodyHeight + 9;
+    }
+
+    // Keep both signature blocks together, after all agreement clauses.
+    y = addPageIfNeeded(doc, y, 41.25 + LAYOUT.signatureHeight + 12);
     y = drawSignatureBlock(doc, {
       y,
       tenantSignature,
@@ -347,7 +401,7 @@ export const createSignedLeasePdf = ({
       .strokeColor('#cccccc').lineWidth(0.75).stroke();
     y += 9;
     doc.font('Helvetica').fontSize(8.25).fillColor('#666666')
-      .text('Riiroow Apartment Management — Residential Lease Agreement',
+      .text('Riiroow Apartments Management — Residential Lease Agreement',
         PAGE.margin, y, {
           width: LAYOUT.contentWidth,
           align: 'center',
