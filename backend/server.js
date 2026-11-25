@@ -391,7 +391,7 @@ const streamLeaseDocument = async ({ leaseId, documentId, res, download = false 
   const mimeType = String(row.mime_type || 'application/octet-stream');
   const inline = !download && ['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType);
   const safeName = String(row.original_name || 'lease-document')
-    .replace(/[\\/\\r\\n\\"]/g, '_').replace(/[\\u0000-\\u001f\\u007f]/g, '').slice(0, 200) || 'lease-document';
+    .replaceAll('/', '_').replaceAll('\\\\', '_').replace(/[\\r\\n\"]/g, '_').replace(/[\\u0000-\\u001f\\u007f]/g, '').slice(0, 200) || 'lease-document';
   res.set({
     'Cache-Control': 'private, no-store, max-age=0',
     'X-Content-Type-Options': 'nosniff',
