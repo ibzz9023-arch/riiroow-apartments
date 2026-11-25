@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const emptyText = { page: '1', x: '55', y: '700', fontSize: '12', coverWidth: '220', coverHeight: '40', text: '', cover: true };
 const emptyImage = { page: '1', x: '55', y: '600', width: '120', height: '60' };
 
-export default function LeaseDocumentEditor({ lease, document, requestJson, onClose, onSaved }) {
+export default function LeaseDocumentEditor({ lease, document, requestJson, requestPdf, onClose, onSaved }) {
   const [textDraft, setTextDraft] = useState(emptyText);
   const [imageDraft, setImageDraft] = useState(emptyImage);
   const [imageDataUrl, setImageDataUrl] = useState('');
@@ -12,7 +12,13 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
   const [images, setImages] = useState([]);
   const [deletePages, setDeletePages] = useState('');
   const [saving, setSaving] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewFingerprint, setPreviewFingerprint] = useState('');
   const [error, setError] = useState('');
+  const isSignedSource = document.documentType === 'signed_lease' || String(document.originalName || '').includes('EDITED_COPY_NOT_EXECUTED');
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const addText = () => {
     const page = Number(textDraft.page);
@@ -78,15 +84,51 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
     return [...new Set(values.map((part) => Number(part) - 1))];
   };
 
+  const buildPayload = () => ({
+    textItems,
+    images: images.map(({ name, ...image }) => image),
+    deletePageIndices: parsedDeletePages(),
+  });
+
+  const preview = async () => {
+    if (previewBusy || (!textItems.length && !images.length && !deletePages.trim())) return;
+    setPreviewBusy(true);
+    setError('');
+    try {
+      const payload = buildPayload();
+      const blob = await requestPdf(
+        `/api/leases/${encodeURIComponent(lease.id)}/documents/${encodeURIComponent(document.id)}/preview-edit`,
+        payload
+      );
+      if (!(blob instanceof Blob) || !blob.size) throw new Error('The preview returned an empty PDF.');
+      setPreviewUrl(URL.createObjectURL(blob));
+      setPreviewFingerprint(JSON.stringify(payload));
+    } catch (previewError) {
+      setError(previewError.message || 'Unable to preview the PDF changes.');
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
   const save = async () => {
     if (saving || (!textItems.length && !images.length && !deletePages.trim())) return;
+    let payload;
+    try {
+      payload = buildPayload();
+    } catch (parseError) {
+      setError(parseError.message);
+      return;
+    }
+    if (previewFingerprint !== JSON.stringify(payload)) {
+      setError('Preview the latest changes before saving the corrected PDF.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const deletePageIndices = parsedDeletePages();
       const result = await requestJson(
         `/api/leases/${encodeURIComponent(lease.id)}/documents/${encodeURIComponent(document.id)}/edit-pdf`,
-        { method: 'POST', body: { textItems, images: images.map(({ name, ...image }) => image), deletePageIndices } }
+        { method: 'POST', body: payload }
       );
       onSaved?.(result);
     } catch (saveError) {
@@ -110,7 +152,7 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
       </div>
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       <div className="lease-editor-preview">
-        <iframe title="Original PDF preview" src={document.previewUrl} />
+        <iframe title={previewUrl ? "Corrected PDF preview" : "Original PDF preview"} src={previewUrl || document.previewUrl} />
       </div>
       <p className="muted">Coordinates are PDF points measured from the bottom-left corner of the selected page. Use the PDF preview above to identify the page and approximate position.</p>
       <div className="panel">
@@ -158,7 +200,8 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
         <p className="muted">At least one page must remain. Page reordering is not supported in this editor.</p>
       </div>
       <div className="form-actions">
-        <button type="button" className="primary-btn" disabled={saving || (!textItems.length && !images.length && !deletePages.trim())} onClick={save}>{saving ? 'Saving new PDF copy…' : 'Save as separate edited PDF'}</button>
+        <button type="button" className="secondary-btn" disabled={previewBusy || (!textItems.length && !images.length && !deletePages.trim())} onClick={preview}>{previewBusy ? 'Preparing preview…' : 'Preview changes'}</button>
+        <button type="button" className="primary-btn" disabled={saving || previewFingerprint !== JSON.stringify({ textItems, images: images.map(({ name, ...image }) => image), deletePageIndices: (() => { try { return parsedDeletePages(); } catch { return []; } })() }) || (!textItems.length && !images.length && !deletePages.trim())} onClick={save}>{saving ? 'Saving new PDF copy…' : 'Save as separate edited PDF'}</button>
       </div>
     </section>
   );
