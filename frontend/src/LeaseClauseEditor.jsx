@@ -15,6 +15,7 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const updateClause = (index, field, value) => setClauses((items) =>
     items.map((clause, clauseIndex) => clauseIndex === index ? { ...clause, [field]: value } : clause)
@@ -91,6 +92,29 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
           <label>Clause {index + 1} wording<textarea rows={5} maxLength={5000} value={clause.body} onChange={(event) => updateClause(index, 'body', event.target.value)} /></label>
         </div>
       ))}
+      <div className="form-actions">
+        <button type="button" className="secondary-btn" onClick={() => setPreviewOpen((open) => !open)}>
+          {previewOpen ? 'Hide content preview' : 'Preview corrected lease'}
+        </button>
+      </div>
+      {previewOpen ? (
+        <div className="panel lease-clause-preview">
+          <h2>RIIROOW APARTMENTS</h2>
+          <h3>RESIDENTIAL LEASE AGREEMENT</h3>
+          <p><strong>CORRECTED DRAFT — REQUIRES REVIEW AND RE-SIGNING</strong></p>
+          <p><strong>Tenant:</strong> {fields.tenantName} · <strong>Unit:</strong> {fields.unitNumber}</p>
+          <p><strong>Start:</strong> {fields.startDate || '—'} · <strong>End:</strong> {fields.endDate || '—'}</p>
+          <p><strong>Monthly rent:</strong> {fields.monthlyRent} · <strong>Security deposit:</strong> {fields.securityDeposit}</p>
+          {clauses.map((clause, index) => (
+            <section key={index}>
+              <h4>{clause.title}</h4>
+              <p>{clause.body}</p>
+            </section>
+          ))}
+          <p><strong>This is an unsigned draft. Both parties must review and sign before it replaces any existing agreement.</strong></p>
+          <p className="muted">This is a content preview; final PDF pagination may differ.</p>
+        </div>
+      ) : null}
       <div className="form-actions">
         <button type="button" className="primary-btn" disabled={saving} onClick={saveDraft}>{saving ? 'Generating corrected draft…' : 'Save corrected lease draft PDF'}</button>
       </div>
