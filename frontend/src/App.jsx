@@ -861,6 +861,27 @@ const [user, setUser] = useState(null);
     return data;
   };
 
+  const requestPdf = async (path, body) => {
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\\/$/, '');
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body || {}),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to prepare the PDF preview.');
+    }
+    const blob = await response.blob();
+    if (!blob.type.includes('application/pdf')) {
+      throw new Error('The server did not return a PDF preview.');
+    }
+    return blob;
+  };
+
   const refreshLeaseDocuments = async (leaseId) => {
     const data = await requestJson(`/api/leases/${encodeURIComponent(leaseId)}/documents`);
     setLeaseDocuments(Array.isArray(data.documents) ? data.documents : []);
@@ -4722,6 +4743,7 @@ const handleLogin = async (event) => {
                         lease={selectedLeaseForDocuments}
                         document={editingLeaseDocument}
                         requestJson={requestJson}
+                        requestPdf={requestPdf}
                         onClose={() => setEditingLeaseDocument(null)}
                         onSaved={async (result) => {
                           await refreshLeaseDocuments(selectedLeaseForDocuments.id);
