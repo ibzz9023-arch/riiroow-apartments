@@ -549,8 +549,8 @@ function LeaseDocumentsPublicPage({ accessToken }) {
                     <p className="muted">Signed lease agreement · {formatSize(document.fileSize)}</p>
                     <p className="muted">{document.createdAt ? `Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}</p>
                     <div className="form-actions">
-                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
-                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                      <a className="small-btn" href={(import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
+                      <a className="small-btn" href={(import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
                     </div>
                   </section>
                 ))}
