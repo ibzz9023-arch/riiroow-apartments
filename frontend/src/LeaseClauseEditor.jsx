@@ -3,7 +3,7 @@ import { LEASE_AGREEMENT_CLAUSES } from '../../shared/leaseAgreementClauses.js';
 
 const toDateInput = (value) => value ? String(value).slice(0, 10) : '';
 
-export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved }) {
+export default function LeaseClauseEditor({ lease, requestJson, requestDownload, onClose, onSaved }) {
   const [clauses, setClauses] = useState(() => LEASE_AGREEMENT_CLAUSES.map((clause) => ({ ...clause })));
   const [fields, setFields] = useState({
     tenantName: lease.tenantName || lease.tenant_name || '',
@@ -53,9 +53,22 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
         `/api/leases/${encodeURIComponent(lease.id)}/documents/create-corrected-draft`,
         { method: 'POST', body: { clauses, leaseFields: fields } }
       );
+      if (!result.downloadUrl || typeof requestDownload !== 'function') {
+        throw new Error('The Word file was saved, but its download could not be prepared. Refresh the lease documents and download it from the list.');
+      }
+      const blob = await requestDownload(result.downloadUrl);
+      if (!(blob instanceof Blob) || !blob.size) throw new Error('The Word export returned an empty file.');
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = result.document?.originalName || 'Riiroow_Corrected_Lease.docx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
       await onSaved?.(result);
     } catch (saveError) {
-      setError(saveError.message || 'Unable to create the corrected lease draft.');
+      setError(saveError.message || 'Unable to export the corrected Word document.');
     } finally {
       setSaving(false);
     }
@@ -66,12 +79,12 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
       <div className="panel-header">
         <div>
           <h3>Word-style lease editor</h3>
-          <p className="muted">Edit the lease details and all 16 clauses, then create a separate unsigned PDF draft.</p>
+          <p className="muted">Edit the lease details and all 16 clauses, then export an editable Word (.docx) draft.</p>
         </div>
         <button type="button" className="secondary-btn" onClick={onClose} disabled={saving}>Close editor</button>
       </div>
       <div className="notice warning">
-        This editor starts from the standard 16-clause template; it does not extract text from an existing signed PDF. The draft does not change the active lease record or replace a signed agreement. For now, download or print it for both parties to sign; the current in-app signing flow does not yet capture signatures on this custom draft.
+        This editor creates a separate editable Word (.docx) file from the standard 16-clause template. It does not extract text from an existing signed PDF or change the active lease. Review the exported Word document and obtain fresh signatures before it replaces any existing agreement.
       </div>
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       <div className="panel">
@@ -116,7 +129,7 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
         </div>
       ) : null}
       <div className="form-actions">
-        <button type="button" className="primary-btn" disabled={saving} onClick={saveDraft}>{saving ? 'Generating corrected draft…' : 'Save corrected lease draft PDF'}</button>
+        <button type="button" className="primary-btn" disabled={saving} onClick={saveDraft}>{saving ? 'Preparing Word export…' : 'Export corrected lease to Word (.docx)'}</button>
       </div>
     </section>
   );
