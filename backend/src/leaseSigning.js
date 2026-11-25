@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import PDFDocument from 'pdfkit';
-import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -327,7 +327,7 @@ export const createSignedLeasePdf = ({
     y = addSectionHeading(doc, '2. Lease Term', y);
     y = drawDetailsGrid(doc, [
       ['Start Date', formatLeaseDate(snapshot.start_date)],
-      ['End Date', formatLeaseDate(snapshot.end_date)],
+      ['End Date', snapshot.end_date ? formatLeaseDate(snapshot.end_date) : 'Not specified'],
       ['Lease Status', snapshot.status],
     ], y);
 
@@ -343,7 +343,7 @@ export const createSignedLeasePdf = ({
     doc.rect(PAGE.margin, y, LAYOUT.contentWidth, notesHeight)
       .lineWidth(0.75).strokeColor('#cccccc').stroke();
     doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
-      .text(String(snapshot.notes || 'No additional notes.'), PAGE.margin + 9,
+      .text(String(getLeaseAdditionalNotes(snapshot) || 'No additional notes.'), PAGE.margin + 9,
         y + 9, {
           width: LAYOUT.contentWidth - 18,
           height: notesHeight - 18,

@@ -5,7 +5,7 @@ import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
-import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
@@ -2777,7 +2777,7 @@ const handleLogin = async (event) => {
       <span class="label">Start Date:</span> ${safe(formatLeaseDate(lease.startDate))}
     </div>
     <div class="detail">
-      <span class="label">End Date:</span> ${safe(formatLeaseDate(lease.endDate))}
+      <span class="label">End Date:</span> ${safe(lease.endDate ? formatLeaseDate(lease.endDate) : 'Not specified')}
     </div>
     <div class="detail">
       <span class="label">Lease Status:</span>
@@ -2796,7 +2796,7 @@ const handleLogin = async (event) => {
   </div>
 
   <h2>4. Additional Notes</h2>
-  <div class="notes">${safe(lease.notes || 'No additional notes.')}</div>
+  <div class="notes">${safe(getLeaseAdditionalNotes(lease) || 'No additional notes.')}</div>
 
   <section class="agreement-clauses">
     <h2>5. Agreement Clauses</h2>
