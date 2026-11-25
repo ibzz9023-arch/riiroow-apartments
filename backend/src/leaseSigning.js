@@ -339,6 +339,17 @@ export const createSignedLeasePdf = ({
         });
     y += notesHeight;
 
+    const firstClause = LEASE_AGREEMENT_CLAUSES[0];
+    const firstClauseTitleHeight = doc.font('Helvetica-Bold').fontSize(9.5)
+      .heightOfString(firstClause.title, { width: LAYOUT.contentWidth });
+    const firstClauseBodyHeight = doc.font('Helvetica').fontSize(9.5)
+      .heightOfString(firstClause.body, { width: LAYOUT.contentWidth, lineGap: 1.5 });
+    const agreementHeadingHeight = 18.75 + 23.625 + 9.75;
+    y = addPageIfNeeded(
+      doc,
+      y,
+      agreementHeadingHeight + firstClauseTitleHeight + firstClauseBodyHeight + 12,
+    );
     y = addSectionHeading(doc, '5. Agreement Clauses', y);
     for (const clause of LEASE_AGREEMENT_CLAUSES) {
       const titleHeight = doc.font('Helvetica-Bold').fontSize(9.5)
