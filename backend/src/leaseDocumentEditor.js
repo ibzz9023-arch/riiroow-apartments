@@ -29,9 +29,6 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
   if (isSignedSource && images.length) {
     throw Object.assign(new Error('Images and signature pictures cannot be inserted into a previously signed lease copy. Use Smart Lease Signing to capture fresh signatures on a new lease version.'), { statusCode: 400 });
   }
-  if (isSignedSource && images.length) {
-    throw Object.assign(new Error('Images and signature pictures cannot be inserted into an already signed lease. Start a new signing version instead.'), { statusCode: 400 });
-  }
   const pdf = await PdfLibDocument.load(sourcePdf, { updateMetadata: false });
   const pages = pdf.getPages();
   if (!pages.length) throw Object.assign(new Error('The PDF has no pages.'), { statusCode: 400 });
