@@ -405,8 +405,8 @@ test('public QR access returns only documents belonging to its lease', async () 
   const result = await response.json();
   assert.equal(result.documents.length, 1);
   assert.equal(result.documents[0].originalName, 'lease.pdf');
-  assert.ok(result.documents[0].previewUrl.startsWith('https://storage.test/'));
-  assert.ok(result.documents[0].downloadUrl.startsWith('https://storage.test/'));
+  assert.equal(result.documents[0].previewUrl, '/api/public/lease-documents/' + firstToken + '/' + result.documents[0].id + '/file');
+  assert.equal(result.documents[0].downloadUrl, '/api/public/lease-documents/' + firstToken + '/' + result.documents[0].id + '/download');
   assert.equal(JSON.stringify(result).includes('storage_path'), false);
   assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
@@ -590,4 +590,56 @@ test('invalid lease IDs do not expose lease documents', async () => {
   });
 
   assert.equal(response.status, 404);
+});
+
+test('lease document preview and download use revocable lease-token endpoints without expiring Storage JWTs', async () => {
+  const id = crypto.randomUUID();
+  const storagePath = leaseId + '/' + id + '.pdf';
+  state.documents.push({
+    id, lease_id: leaseId, original_name: 'lease.pdf', storage_path: storagePath,
+    mime_type: 'application/pdf', file_size: validPdf.length, document_type: 'manual',
+  });
+  state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
+  const publicToken = await getAccessToken();
+
+  const publicPreview = await request('/api/public/lease-documents/' + publicToken + '/' + id + '/file');
+  assert.equal(publicPreview.status, 200);
+  assert.equal(publicPreview.headers.get('content-type'), 'application/pdf');
+  assert.equal(Buffer.from(await publicPreview.arrayBuffer()).toString(), validPdf.toString());
+
+  const publicDownload = await request('/api/public/lease-documents/' + publicToken + '/' + id + '/download');
+  assert.equal(publicDownload.status, 200);
+  assert.match(publicDownload.headers.get('content-disposition'), /^attachment;/);
+
+  const managerPreview = await request('/api/leases/' + leaseId + '/documents/' + id + '/file', {
+    token: tokenFor(managerId, 'Manager'),
+  });
+  assert.equal(managerPreview.status, 200);
+  assert.equal(Buffer.from(await managerPreview.arrayBuffer()).toString(), validPdf.toString());
+
+  const revoked = await request('/api/leases/' + leaseId + '/documents/access', {
+    method: 'DELETE', token: tokenFor(managerId, 'Manager'),
+  });
+  assert.equal(revoked.status, 200);
+  const blocked = await request('/api/public/lease-documents/' + publicToken + '/' + id + '/file');
+  assert.equal(blocked.status, 404);
+});
+
+test('Word lease documents are served as downloads, never as inline content', async () => {
+  const id = crypto.randomUUID();
+  const storagePath = leaseId + '/' + id + '.docx';
+  const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const bytes = Buffer.from('PK fake docx test bytes');
+  state.documents.push({
+    id, lease_id: leaseId, original_name: 'corrected-lease.docx', storage_path: storagePath,
+    mime_type: docxMime, file_size: bytes.length, document_type: 'manual',
+  });
+  state.objects.set(storagePath, { buffer: bytes, contentType: docxMime });
+
+  const response = await request('/api/leases/' + leaseId + '/documents/' + id + '/file', {
+    token: tokenFor(managerId, 'Manager'),
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /^attachment;/);
+  assert.equal(response.headers.get('content-type'), docxMime);
 });

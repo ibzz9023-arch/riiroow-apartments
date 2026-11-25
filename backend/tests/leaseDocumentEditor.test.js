@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { inflateRawSync } from 'node:zlib';
 import { PDFDocument as PdfLibDocument, StandardFonts } from 'pdf-lib';
-import { editLeasePdf, createCorrectedLeaseDraftPdf } from '../src/leaseDocumentEditor.js';
+import { editLeasePdf, createCorrectedLeaseDraftPdf, createCorrectedLeaseDraftDocx } from '../src/leaseDocumentEditor.js';
 
 const makeSourcePdf = async () => {
   const pdf = await PdfLibDocument.create();
@@ -68,3 +69,34 @@ test('corrected lease draft generator produces a valid unsigned PDF from 16 clau
   assert.ok(parsed.getPageCount() >= 1);
 });
 
+
+test('corrected lease Word export is a valid DOCX archive containing all 16 editable clauses', () => {
+  const clauses = Array.from({ length: 16 }, (_, index) => ({
+    title: 'Clause ' + (index + 1) + ' — Test',
+    body: 'Clause ' + (index + 1) + ' wording & details.',
+  }));
+  const docx = createCorrectedLeaseDraftDocx({
+    lease: { unit_number: '101', start_date: '2026-01-01', end_date: '2026-12-31', monthly_rent: 500, security_deposit: 500 },
+    tenant: { name: 'Test Tenant' },
+    clauses,
+  });
+  assert.equal(docx.subarray(0, 2).toString(), 'PK');
+  let offset = 0;
+  let documentXml = '';
+  while (offset + 30 < docx.length && docx.readUInt32LE(offset) === 0x04034b50) {
+    const compressedSize = docx.readUInt32LE(offset + 18);
+    const nameLength = docx.readUInt16LE(offset + 26);
+    const extraLength = docx.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const name = docx.subarray(nameStart, nameStart + nameLength).toString('utf8');
+    const dataStart = nameStart + nameLength + extraLength;
+    const compressed = docx.subarray(dataStart, dataStart + compressedSize);
+    if (name === 'word/document.xml') documentXml = inflateRawSync(compressed).toString('utf8');
+    offset = dataStart + compressedSize;
+  }
+  assert.ok(documentXml.includes('RIIROOW APARTMENTS'));
+  assert.ok(documentXml.includes('Clause 1 — Test'));
+  assert.ok(documentXml.includes('Clause 16 — Test'));
+  assert.ok(documentXml.includes('Clause 3 wording &amp; details.'));
+  assert.ok(documentXml.includes('SIGNATURES'));
+});

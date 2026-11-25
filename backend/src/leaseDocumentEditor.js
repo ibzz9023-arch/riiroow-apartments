@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { deflateRawSync } from 'node:zlib';
 import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -146,3 +147,142 @@ export const createCorrectedLeaseDraftPdf = ({ lease, tenant, clauses }) => new 
   }
   doc.end();
 });
+
+
+const xmlEscape = (value) => String(value ?? '')
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+const crc32 = (buffer) => {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const createDocxZip = (files) => {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const dosDate = 0x0021;
+  for (const [name, source] of Object.entries(files)) {
+    const filename = Buffer.from(name, 'utf8');
+    const data = Buffer.from(source, 'utf8');
+    const compressed = deflateRawSync(data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(dosDate, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(filename.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, filename, compressed);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(dosDate, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(filename.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, filename);
+    offset += local.length + filename.length + compressed.length;
+  }
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, centralDirectory, end]);
+};
+
+const docxParagraph = (text, style = 'Normal') =>
+  '<w:p><w:pPr><w:pStyle w:val="' + style + '"/></w:pPr><w:r><w:t xml:space="preserve">' +
+  xmlEscape(text) + '</w:t></w:r></w:p>';
+
+export const createCorrectedLeaseDraftDocx = ({ lease, tenant, clauses }) => {
+  if (!Array.isArray(clauses) || clauses.length !== 16) {
+    throw Object.assign(new Error('A Word lease export must contain all 16 clauses.'), { statusCode: 400 });
+  }
+  const paragraphs = [
+    docxParagraph('RIIROOW APARTMENTS', 'Title'),
+    docxParagraph('RESIDENTIAL LEASE AGREEMENT', 'Subtitle'),
+    docxParagraph('CORRECTED DRAFT — REQUIRES REVIEW AND RE-SIGNING', 'Warning'),
+    docxParagraph('Tenant: ' + (tenant?.name || '—')),
+    docxParagraph('Unit number: ' + (lease.unit_number ?? lease.unitNumber ?? '—')),
+    docxParagraph('Commencement date: ' + (lease.start_date ?? lease.startDate ?? '—')),
+    docxParagraph('Expiry date: ' + (lease.end_date ?? lease.endDate ?? '—')),
+    docxParagraph('Monthly rent (USD): ' + (lease.monthly_rent ?? lease.monthlyRent ?? '—')),
+    docxParagraph('Security deposit (USD): ' + (lease.security_deposit ?? lease.securityDeposit ?? '—')),
+    docxParagraph('PARTIES AND AGREEMENT TERMS', 'Heading1'),
+  ];
+  for (const [index, clause] of clauses.entries()) {
+    paragraphs.push(docxParagraph('CLAUSE ' + (index + 1) + '. ' + clause.title, 'Heading2'));
+    paragraphs.push(docxParagraph(clause.body));
+  }
+  paragraphs.push(
+    docxParagraph('IMPORTANT: This corrected document is an unsigned draft. It does not replace or amend an existing signed lease until both parties have reviewed and signed the corrected version.', 'Warning'),
+    docxParagraph('SIGNATURES', 'Heading1'),
+    docxParagraph('Tenant signature: ____________________________________       Date: __________________'),
+    docxParagraph('Tenant name: ' + (tenant?.name || '—')),
+    docxParagraph('For Riiroow Apartments Management: __________________________       Date: __________________')
+  );
+
+  const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+    paragraphs.join('') +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>';
+  const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="22"/><w:lang w:val="en-US"/></w:rPr><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="300" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="220" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="23"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Warning"><w:name w:val="Warning"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:before="160" w:after="200"/></w:pPr><w:rPr><w:b/><w:color w:val="A16207"/><w:sz w:val="22"/></w:rPr></w:style>' +
+    '</w:styles>';
+  return createDocxZip({
+    '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      '</Types>',
+    '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '</Relationships>',
+    'word/document.xml': documentXml,
+    'word/styles.xml': stylesXml,
+    'word/_rels/document.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>',
+  });
+};
