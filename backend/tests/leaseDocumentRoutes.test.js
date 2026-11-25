@@ -83,6 +83,11 @@ class Query {
     return this;
   }
 
+  delete() {
+    this.action = 'delete';
+    return this;
+  }
+
   async execute() {
     if (this.action === 'insert') {
       if (this.table === 'lease_documents' && state.failDocumentInsert) {
@@ -114,6 +119,14 @@ class Query {
 
     if (this.action === 'update') {
       for (const row of rows) Object.assign(row, structuredClone(this.payload));
+    }
+
+    if (this.action === 'delete') {
+      const target = this.table === 'lease_documents' ? state.documents : this.table === 'lease_document_access' ? state.access : [];
+      for (const row of rows) {
+        const index = target.indexOf(row);
+        if (index >= 0) target.splice(index, 1);
+      }
     }
 
     if (this.sort) {
@@ -150,6 +163,12 @@ const storage = {
       async remove(paths) {
         for (const path of paths) state.objects.delete(path);
         return { data: paths, error: null };
+      },
+
+      async download(path) {
+        const stored = state.objects.get(path);
+        if (!stored) return { data: null, error: { message: 'Object not found.' } };
+        return { data: new Blob([stored.buffer], { type: stored.contentType }), error: null };
       },
 
       async createSignedUrl(path, expiresIn, options) {
@@ -498,6 +517,71 @@ test('lease document list is restricted to the requested lease', async () => {
   const result = await response.json();
   assert.equal(result.documents.length, 1);
   assert.equal(result.access.enabled, false);
+});
+
+test('Manager can permanently delete manually uploaded and signed lease PDFs', async () => {
+  for (const documentType of ['manual', 'signed_lease']) {
+    const id = crypto.randomUUID();
+    const storagePath = `${leaseId}/${id}.pdf`;
+    state.documents.push({
+      id,
+      lease_id: leaseId,
+      original_name: documentType === 'signed_lease' ? 'Signed_Lease.pdf' : 'supporting-document.pdf',
+      storage_path: storagePath,
+      mime_type: 'application/pdf',
+      file_size: validPdf.length,
+      document_type: documentType,
+    });
+    state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
+
+    const response = await request(`/api/leases/${leaseId}/documents/${id}`, {
+      method: 'DELETE',
+      token: tokenFor(managerId, 'Manager'),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).success, true);
+    assert.equal(state.documents.some((item) => item.id === id), false);
+    assert.equal(state.objects.has(storagePath), false);
+  }
+});
+
+test('Accountant cannot delete lease documents', async () => {
+  const id = crypto.randomUUID();
+  const storagePath = `${leaseId}/${id}.pdf`;
+  state.documents.push({
+    id, lease_id: leaseId, original_name: 'protected.pdf', storage_path: storagePath,
+    mime_type: 'application/pdf', file_size: validPdf.length, document_type: 'signed_lease',
+  });
+  state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
+
+  const response = await request(`/api/leases/${leaseId}/documents/${id}`, {
+    method: 'DELETE',
+    token: tokenFor(accountantId, 'Accountant'),
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(state.documents.some((item) => item.id === id), true);
+  assert.equal(state.objects.has(storagePath), true);
+});
+
+test('a lease document cannot be deleted through a different lease URL', async () => {
+  const id = crypto.randomUUID();
+  const storagePath = `${leaseId}/${id}.pdf`;
+  state.documents.push({
+    id, lease_id: leaseId, original_name: 'protected.pdf', storage_path: storagePath,
+    mime_type: 'application/pdf', file_size: validPdf.length, document_type: 'manual',
+  });
+  state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
+
+  const response = await request(`/api/leases/${secondLeaseId}/documents/${id}`, {
+    method: 'DELETE',
+    token: tokenFor(adminId, 'Admin'),
+  });
+
+  assert.equal(response.status, 404);
+  assert.equal(state.documents.some((item) => item.id === id), true);
+  assert.equal(state.objects.has(storagePath), true);
 });
 
 test('invalid lease IDs do not expose lease documents', async () => {
