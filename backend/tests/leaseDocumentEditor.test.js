@@ -32,7 +32,7 @@ test('PDF editor blocks image insertion into an already signed lease', async () 
   const source = await makeSourcePdf();
   await assert.rejects(
     () => editLeasePdf({ sourcePdf: source, isSignedSource: true, images: [{ dataUrl: 'data:image/png;base64,AAAA' }] }),
-    /cannot be inserted into an already signed lease/
+    /cannot be inserted into a previously signed lease copy/
   );
 });
 
