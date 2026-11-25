@@ -6,6 +6,8 @@ import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
 import LeaseDocumentEditor from './LeaseDocumentEditor.jsx';
 import LeaseClauseEditor from './LeaseClauseEditor.jsx';
+import LeaseDocumentEditor from './LeaseDocumentEditor.jsx';
+import LeaseClauseEditor from './LeaseClauseEditor.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
 import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
@@ -645,6 +647,8 @@ const [user, setUser] = useState(null);
   const [leaseDocumentFiles, setLeaseDocumentFiles] = useState([]);
   const [leaseDocumentsUploading, setLeaseDocumentsUploading] = useState(false);
   const [signedLeaseRegenerating, setSignedLeaseRegenerating] = useState(false);
+  const [editingLeaseDocument, setEditingLeaseDocument] = useState(null);
+  const [leaseClauseEditorOpen, setLeaseClauseEditorOpen] = useState(false);
   const [leaseDocumentAccessStatus, setLeaseDocumentAccessStatus] = useState({ enabled: false, revokedAt: null });
   const [leaseDocumentAccessUrl, setLeaseDocumentAccessUrl] = useState('');
   const [leaseDocumentQrDataUrl, setLeaseDocumentQrDataUrl] = useState('');
@@ -869,6 +873,8 @@ const [user, setUser] = useState(null);
 
   const openLeaseDocuments = async (lease) => {
     setSelectedLeaseForDocuments(lease);
+    setEditingLeaseDocument(null);
+    setLeaseClauseEditorOpen(false);
     setLeaseDocuments([]);
     setLeaseDocumentEditing(null);
     setLeaseDocumentFiles([]);
@@ -4670,6 +4676,8 @@ const handleLogin = async (event) => {
                         type="button"
                         onClick={() => {
                           setSelectedLeaseForDocuments(null);
+                          setEditingLeaseDocument(null);
+                          setLeaseClauseEditorOpen(false);
                           setLeaseDocuments([]);
                                                 setLeaseDocumentAccessUrl('');
                           setLeaseDocumentQrDataUrl('');
@@ -4691,6 +4699,39 @@ const handleLogin = async (event) => {
                         lease={selectedLeaseForDocuments}
                         requestJson={requestJson}
                         onCompleted={() => refreshLeaseDocuments(selectedLeaseForDocuments.id)}
+                      />
+                    ) : null}
+
+                    {['admin', 'manager'].includes(role) ? (
+                      <div className="form-actions">
+                        <button type="button" className="secondary-btn" onClick={() => { setLeaseClauseEditorOpen((open) => !open); setEditingLeaseDocument(null); }}>
+                          {leaseClauseEditorOpen ? 'Close Word-style editor' : 'Edit lease text (Word-style)'}
+                        </button>
+                      </div>
+                    ) : null}
+                    {['admin', 'manager'].includes(role) && leaseClauseEditorOpen ? (
+                      <LeaseClauseEditor
+                        lease={selectedLeaseForDocuments}
+                        requestJson={requestJson}
+                        onClose={() => setLeaseClauseEditorOpen(false)}
+                        onSaved={async (result) => {
+                          await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          setLeaseClauseEditorOpen(false);
+                          setInfoMessage(result.message || 'Corrected draft saved separately. It is unsigned and does not replace the original agreement.');
+                        }}
+                      />
+                    ) : null}
+                    {['admin', 'manager'].includes(role) && editingLeaseDocument ? (
+                      <LeaseDocumentEditor
+                        lease={selectedLeaseForDocuments}
+                        document={editingLeaseDocument}
+                        requestJson={requestJson}
+                        onClose={() => setEditingLeaseDocument(null)}
+                        onSaved={async (result) => {
+                          await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          setEditingLeaseDocument(null);
+                          setInfoMessage(result.message || 'A separate edited PDF copy was saved. The original remains unchanged.');
+                        }}
                       />
                     ) : null}
 
@@ -4739,6 +4780,9 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                                {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                ) : null}
                                 <button className="small-btn" type="button" onClick={() => setLeaseDocumentEditing(document)}>Edit PDF</button>
                               </div>
                             </div>
@@ -4758,6 +4802,9 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                                {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                ) : null}
                                 {document.mimeType === 'application/pdf' ? <button className="small-btn" type="button" onClick={() => setLeaseDocumentEditing(document)}>Edit PDF</button> : null}
                               </div>
                             </div>
