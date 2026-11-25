@@ -175,25 +175,33 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
           </div>
         ))}
       </div>
-      <div className="panel">
-        <h4>Insert image or signature image</h4>
-        <div className="form-grid">
-          <label className="full-span">PNG/JPEG image (max 2 MB)<input type="file" accept="image/png,image/jpeg" onChange={(event) => handleImage(event.target.files?.[0])} /></label>
-          <label>Page number<input type="number" min="1" value={imageDraft.page} onChange={(event) => setImageDraft((v) => ({ ...v, page: event.target.value }))} /></label>
-          <label>Left position (pt)<input type="number" min="0" value={imageDraft.x} onChange={(event) => setImageDraft((v) => ({ ...v, x: event.target.value }))} /></label>
-          <label>Bottom position (pt)<input type="number" min="0" value={imageDraft.y} onChange={(event) => setImageDraft((v) => ({ ...v, y: event.target.value }))} /></label>
-          <label>Width (pt)<input type="number" min="10" max="500" value={imageDraft.width} onChange={(event) => setImageDraft((v) => ({ ...v, width: event.target.value }))} /></label>
-          <label>Height (pt)<input type="number" min="10" max="500" value={imageDraft.height} onChange={(event) => setImageDraft((v) => ({ ...v, height: event.target.value }))} /></label>
-        </div>
-        {imageName ? <p className="muted">Selected: {imageName}</p> : null}
-        <button type="button" className="small-btn" disabled={!imageDataUrl} onClick={addImage}>Add image</button>
-        {images.map((item, index) => (
-          <div className="lease-editor-change" key={index}>
-            <span>Page {item.pageIndex + 1}: {item.name}</span>
-            <button type="button" className="small-btn danger" onClick={() => setImages((items) => items.filter((_, i) => i !== index))}>Remove</button>
+      {!isSignedSource ? (
+        <div className="panel">
+          <h4>Insert image</h4>
+          <div className="form-grid">
+            <label className="full-span">PNG/JPEG image (max 2 MB)<input type="file" accept="image/png,image/jpeg" onChange={(event) => handleImage(event.target.files?.[0])} /></label>
+            <label>Page number<input type="number" min="1" value={imageDraft.page} onChange={(event) => setImageDraft((v) => ({ ...v, page: event.target.value }))} /></label>
+            <label>Left position (pt)<input type="number" min="0" value={imageDraft.x} onChange={(event) => setImageDraft((v) => ({ ...v, x: event.target.value }))} /></label>
+            <label>Bottom position (pt)<input type="number" min="0" value={imageDraft.y} onChange={(event) => setImageDraft((v) => ({ ...v, y: event.target.value }))} /></label>
+            <label>Width (pt)<input type="number" min="10" max="500" value={imageDraft.width} onChange={(event) => setImageDraft((v) => ({ ...v, width: event.target.value }))} /></label>
+            <label>Height (pt)<input type="number" min="10" max="500" value={imageDraft.height} onChange={(event) => setImageDraft((v) => ({ ...v, height: event.target.value }))} /></label>
           </div>
-        ))}
-      </div>
+          {imageName ? <p className="muted">Selected: {imageName}</p> : null}
+          <button type="button" className="small-btn" disabled={!imageDataUrl} onClick={addImage}>Add image</button>
+          {images.map((item, index) => (
+            <div className="lease-editor-change" key={index}>
+              <span>Page {item.pageIndex + 1}: {item.name}</span>
+              <button type="button" className="small-btn danger" onClick={() => setImages((items) => items.filter((_, i) => i !== index))}>Remove</button>
+            </div>
+          ))}
+        </div>
+  
+      ) : (
+        <div className="panel">
+          <h4>Image insertion unavailable</h4>
+          <p className="muted">Images, including signature pictures, cannot be pasted into a previously signed lease. Use Smart Lease Signing to capture fresh signatures on a new lease version.</p>
+        </div>
+      )}
       <div className="panel">
         <h4>Page management</h4>
         <label>Remove page numbers (comma-separated, e.g. 2,4)<input value={deletePages} onChange={(event) => setDeletePages(event.target.value)} placeholder="Leave blank to keep all pages" /></label>
