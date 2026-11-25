@@ -5,6 +5,7 @@ import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
+import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
 const shareViaWhatsApp = (message, phone = '') => {
   const reviewedMessage = window.prompt('Review or edit this WhatsApp message before continuing:', String(message || ''));
@@ -2664,7 +2665,8 @@ const handleLogin = async (event) => {
       <img src="${window.location.origin}${import.meta.env.BASE_URL}riiroow-logo.png" alt="Riiroow Apartments">
     </div>
     <h1 class="brand">RIIROOW APARTMENT</h1>
-    <div class="subtitle">LEASE SUMMARY</div>
+    <div class="subtitle">RESIDENTIAL LEASE AGREEMENT</div>
+    ${isLeaseRenewal(lease) ? `<p class="renewal-note">${safe(LEASE_RENEWAL_STATEMENT)}</p>` : ''}
     <div class="lease-id">Lease ID: ${safe(lease.id)}</div>
   </div>
 
@@ -2714,6 +2716,16 @@ const handleLogin = async (event) => {
 
   <h2>4. Additional Notes</h2>
   <div class="notes">${safe(lease.notes || 'No additional notes.')}</div>
+
+  <section class="agreement-clauses">
+    <h2>5. Agreement Clauses</h2>
+    ${LEASE_AGREEMENT_CLAUSES.map((clause) => `
+      <div class="clause">
+        <strong>${safe(clause.title)}</strong>
+        <p>${safe(clause.body)}</p>
+      </div>
+    `).join('')}
+  </section>
 
   <div class="signatures">
     <div class="signature">
