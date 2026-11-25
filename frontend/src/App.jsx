@@ -4,6 +4,8 @@ import FinancialManagement from './FinancialManagement.jsx';
 import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
+import LeaseDocumentEditor from './LeaseDocumentEditor.jsx';
+import LeaseClauseEditor from './LeaseClauseEditor.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
 import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
@@ -642,6 +644,8 @@ const [user, setUser] = useState(null);
   const [leaseDocumentFiles, setLeaseDocumentFiles] = useState([]);
   const [leaseDocumentsUploading, setLeaseDocumentsUploading] = useState(false);
   const [signedLeaseRegenerating, setSignedLeaseRegenerating] = useState(false);
+  const [editingLeaseDocument, setEditingLeaseDocument] = useState(null);
+  const [leaseClauseEditorOpen, setLeaseClauseEditorOpen] = useState(false);
   const [leaseDocumentAccessStatus, setLeaseDocumentAccessStatus] = useState({ enabled: false, revokedAt: null });
   const [leaseDocumentAccessUrl, setLeaseDocumentAccessUrl] = useState('');
   const [leaseDocumentQrDataUrl, setLeaseDocumentQrDataUrl] = useState('');
@@ -857,6 +861,27 @@ const [user, setUser] = useState(null);
     return data;
   };
 
+  const requestPdf = async (path, body) => {
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body || {}),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to prepare the PDF preview.');
+    }
+    const blob = await response.blob();
+    if (!blob.type.includes('application/pdf')) {
+      throw new Error('The server did not return a PDF preview.');
+    }
+    return blob;
+  };
+
   const refreshLeaseDocuments = async (leaseId) => {
     const data = await requestJson(`/api/leases/${encodeURIComponent(leaseId)}/documents`);
     setLeaseDocuments(Array.isArray(data.documents) ? data.documents : []);
@@ -866,6 +891,8 @@ const [user, setUser] = useState(null);
 
   const openLeaseDocuments = async (lease) => {
     setSelectedLeaseForDocuments(lease);
+    setEditingLeaseDocument(null);
+    setLeaseClauseEditorOpen(false);
     setLeaseDocuments([]);
     setLeaseDocumentFiles([]);
     setLeaseDocumentsError('');
@@ -4666,6 +4693,8 @@ const handleLogin = async (event) => {
                         type="button"
                         onClick={() => {
                           setSelectedLeaseForDocuments(null);
+                          setEditingLeaseDocument(null);
+                          setLeaseClauseEditorOpen(false);
                           setLeaseDocuments([]);
                                                 setLeaseDocumentAccessUrl('');
                           setLeaseDocumentQrDataUrl('');
@@ -4687,6 +4716,48 @@ const handleLogin = async (event) => {
                         lease={selectedLeaseForDocuments}
                         requestJson={requestJson}
                         onCompleted={() => refreshLeaseDocuments(selectedLeaseForDocuments.id)}
+                      />
+                    ) : null}
+
+                    {['admin', 'manager'].includes(role) ? (
+                      <div className="form-actions">
+                        <button type="button" className="secondary-btn" onClick={() => { setLeaseClauseEditorOpen((open) => !open); setEditingLeaseDocument(null); }}>
+                          {leaseClauseEditorOpen ? 'Close Word-style editor' : 'Edit lease text (Word-style)'}
+                        </button>
+                      </div>
+                    ) : null}
+                    {['admin', 'manager'].includes(role) && leaseClauseEditorOpen ? (
+                      <LeaseClauseEditor
+                        lease={selectedLeaseForDocuments}
+                        requestJson={requestJson}
+                        onClose={() => setLeaseClauseEditorOpen(false)}
+                        onSaved={async (result) => {
+                          setLeaseClauseEditorOpen(false);
+                          setInfoMessage(result.message || 'Corrected draft saved separately. It is unsigned and does not replace the original agreement.');
+                          try {
+                            await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          } catch {
+                            setLeaseDocumentsError('The corrected draft was saved, but the document list could not be refreshed. Close and reopen this lease to reload it.');
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {['admin', 'manager'].includes(role) && editingLeaseDocument ? (
+                      <LeaseDocumentEditor
+                        lease={selectedLeaseForDocuments}
+                        document={editingLeaseDocument}
+                        requestJson={requestJson}
+                        requestPdf={requestPdf}
+                        onClose={() => setEditingLeaseDocument(null)}
+                        onSaved={async (result) => {
+                          setEditingLeaseDocument(null);
+                          setInfoMessage(result.message || 'A separate edited PDF copy was saved. The original remains unchanged.');
+                          try {
+                            await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          } catch {
+                            setLeaseDocumentsError('The edited PDF was saved, but the document list could not be refreshed. Close and reopen this lease to reload it.');
+                          }
+                        }}
                       />
                     ) : null}
 
@@ -4735,6 +4806,9 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                                {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                ) : null}
                               </div>
                             </div>
                           ))}
@@ -4753,6 +4827,9 @@ const handleLogin = async (event) => {
                               <div className="form-actions">
                                 <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                                {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                ) : null}
                               </div>
                             </div>
                           ))}
