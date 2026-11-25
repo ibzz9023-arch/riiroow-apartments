@@ -4732,9 +4732,13 @@ const handleLogin = async (event) => {
                         requestJson={requestJson}
                         onClose={() => setLeaseClauseEditorOpen(false)}
                         onSaved={async (result) => {
-                          await refreshLeaseDocuments(selectedLeaseForDocuments.id);
                           setLeaseClauseEditorOpen(false);
                           setInfoMessage(result.message || 'Corrected draft saved separately. It is unsigned and does not replace the original agreement.');
+                          try {
+                            await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          } catch {
+                            setLeaseDocumentsError('The corrected draft was saved, but the document list could not be refreshed. Close and reopen this lease to reload it.');
+                          }
                         }}
                       />
                     ) : null}
@@ -4746,9 +4750,13 @@ const handleLogin = async (event) => {
                         requestPdf={requestPdf}
                         onClose={() => setEditingLeaseDocument(null)}
                         onSaved={async (result) => {
-                          await refreshLeaseDocuments(selectedLeaseForDocuments.id);
                           setEditingLeaseDocument(null);
                           setInfoMessage(result.message || 'A separate edited PDF copy was saved. The original remains unchanged.');
+                          try {
+                            await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+                          } catch {
+                            setLeaseDocumentsError('The edited PDF was saved, but the document list could not be refreshed. Close and reopen this lease to reload it.');
+                          }
                         }}
                       />
                     ) : null}
