@@ -534,7 +534,7 @@ test('Manager can permanently delete manually uploaded and signed lease PDFs', a
     });
     state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
 
-    const response = await request(`/api/leases/${leaseId}/documents/${id}`, {
+    const response = await request(`/api/leases/${leaseId}/documents/${id}/file`, {
       method: 'DELETE',
       token: tokenFor(managerId, 'Manager'),
     });
@@ -555,7 +555,7 @@ test('Accountant cannot delete lease documents', async () => {
   });
   state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
 
-  const response = await request(`/api/leases/${leaseId}/documents/${id}`, {
+  const response = await request(`/api/leases/${leaseId}/documents/${id}/file`, {
     method: 'DELETE',
     token: tokenFor(accountantId, 'Accountant'),
   });
@@ -574,7 +574,7 @@ test('a lease document cannot be deleted through a different lease URL', async (
   });
   state.objects.set(storagePath, { buffer: Buffer.from(validPdf), contentType: 'application/pdf' });
 
-  const response = await request(`/api/leases/${secondLeaseId}/documents/${id}`, {
+  const response = await request(`/api/leases/${secondLeaseId}/documents/${id}/file`, {
     method: 'DELETE',
     token: tokenFor(adminId, 'Admin'),
   });
