@@ -1094,6 +1094,66 @@ app.post(
   }
 );
 
+app.delete(
+  '/api/leases/:id/documents/:documentId',
+  requireRoles('Admin', 'Manager'),
+  async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      if (!requireLeaseDocumentStorage(res)) return;
+      const lease = await findLeaseDocumentLease(req.params.id);
+      if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+
+      const { data: document, error: documentError } = await supabaseServiceRole
+        .from('lease_documents')
+        .select('id, lease_id, original_name, storage_path, mime_type, document_type')
+        .eq('id', req.params.documentId)
+        .eq('lease_id', lease.id)
+        .maybeSingle();
+      if (documentError) throw documentError;
+      if (!document) return res.status(404).json({ error: 'Lease document not found.' });
+
+      const bucket = supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET);
+      const { data: storedFile, error: downloadError } = await bucket.download(document.storage_path);
+      if (downloadError) throw downloadError;
+      if (!storedFile) throw new Error('The stored lease document could not be retrieved for safe deletion.');
+      const fileBuffer = Buffer.from(await storedFile.arrayBuffer());
+
+      const { error: storageDeleteError } = await bucket.remove([document.storage_path]);
+      if (storageDeleteError) throw storageDeleteError;
+
+      const { data: deleted, error: metadataDeleteError } = await supabaseServiceRole
+        .from('lease_documents')
+        .delete()
+        .eq('id', document.id)
+        .eq('lease_id', lease.id)
+        .select('id')
+        .maybeSingle();
+
+      if (metadataDeleteError || !deleted) {
+        const { error: restoreError } = await bucket.upload(document.storage_path, fileBuffer, {
+          contentType: document.mime_type,
+          upsert: false,
+        });
+        if (restoreError) {
+          console.error('Lease document rollback failed; file metadata was retained but storage restoration failed:', restoreError.message || restoreError);
+        }
+        if (metadataDeleteError) throw metadataDeleteError;
+        return res.status(409).json({ error: 'The lease document changed before deletion. The file was restored; refresh and try again.' });
+      }
+
+      return res.json({
+        success: true,
+        deletedDocumentType: document.document_type || 'manual',
+        message: 'Lease document permanently deleted. Lease signing history and other lease records were not changed.',
+      });
+    } catch (error) {
+      console.error('Lease document delete error:', error?.message || error);
+      return res.status(500).json({ error: 'Unable to delete this lease document. No other lease records were changed.' });
+    }
+  }
+);
+
 app.post(
   '/api/leases/:id/documents/access',
   requireRoles('Admin', 'Manager', 'Accountant'),
