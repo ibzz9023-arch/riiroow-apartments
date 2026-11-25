@@ -127,6 +127,10 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
     .join('');
   assert.ok(decodedGlyphRuns.includes('Test Tenant'));
   assert.ok(decodedGlyphRuns.includes('Test Manager'));
+  assert.ok(decodedGlyphRuns.includes('PURPOSE OF THE AGREEMENT'));
+  assert.ok(decodedGlyphRuns.includes('RENTAL PAYMENT'));
+  assert.ok(decodedGlyphRuns.includes('GENERAL CONDITIONS AND DISPUTE RESOLUTION'));
+  assert.ok(decodedGlyphRuns.includes('The premises shall be used exclusively for private residential purposes.'));
 });
 
 test('the standard lease contains all sixteen approved clauses and detects renewals', () => {
