@@ -12,7 +12,7 @@ const safeNumber = (value, min, max, label) => {
   return number;
 };
 
-export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], deletePageIndices = [] }) => {
+export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], deletePageIndices = [], isSignedSource = false }) => {
   if (!Buffer.isBuffer(sourcePdf) || sourcePdf.length < 8 || sourcePdf.length > MAX_PDF_BYTES || sourcePdf.subarray(0, 5).toString() !== '%PDF-') {
     throw Object.assign(new Error('The source document is not a valid PDF under 10 MB.'), { statusCode: 400 });
   }
@@ -25,6 +25,15 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
   const deleted = new Set(deletePageIndices.map((value) => safeNumber(value, 0, pages.length - 1, 'Page index')));
   if (deleted.size >= pages.length) throw Object.assign(new Error('At least one PDF page must remain.'), { statusCode: 400 });
   const font = await pdf.embedFont(StandardFonts.Helvetica);
+  if (isSignedSource) {
+    for (const page of pages) {
+      const { width, height } = page.getSize();
+      page.drawText('EDITED COPY — ORIGINAL SIGNATURES DO NOT AUTHORIZE CHANGED TERMS', {
+        x: 24, y: height / 2, size: 12, font, color: rgb(0.72, 0.12, 0.12), opacity: 0.55,
+        rotate: { type: 'degrees', angle: 32 }, maxWidth: Math.max(100, width - 48),
+      });
+    }
+  }
   for (const item of textItems) {
     const pageIndex = safeNumber(item.pageIndex, 0, pages.length - 1, 'Page number');
     if (deleted.has(pageIndex)) throw Object.assign(new Error('Text cannot be added to a page being removed.'), { statusCode: 400 });
