@@ -2523,6 +2523,11 @@ const handleLogin = async (event) => {
       page-break-inside: avoid;
     }
 
+    .agreement-clauses > h2 {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
     .renewal-note {
       margin: 10px 0 0;
       font-weight: 700;
