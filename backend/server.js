@@ -885,7 +885,8 @@ app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin',
       contentType: 'application/pdf', upsert: false,
     });
     if (uploadError) throw uploadError;
-    const prefix = source.document_type === 'signed_lease' ? 'EDITED_COPY_NOT_EXECUTED' : 'Edited_Copy';
+    const isSignedSource = source.document_type === 'signed_lease' || String(source.original_name || '').includes('EDITED_COPY_NOT_EXECUTED');
+    const prefix = isSignedSource ? 'EDITED_COPY_NOT_EXECUTED' : 'Edited_Copy';
     const originalName = `${prefix}_${cleanLeaseDocumentName(source.original_name).replace(/\.pdf$/i, '')}.pdf`.slice(0, 255);
     const { data: saved, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
       lease_id: lease.id, original_name: originalName, storage_path: uploadedPath,
@@ -893,7 +894,7 @@ app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin',
       document_type: 'manual', created_by: req.auth.sub,
     }]).select('id, original_name, created_at').single();
     if (insertError) throw insertError;
-    if (source.document_type === 'signed_lease') {
+    if (isSignedSource) {
       const { data: signingSession } = await supabaseServiceRole.from('lease_signing_sessions')
         .select('id').eq('lease_id', lease.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (signingSession?.id) {
@@ -906,7 +907,7 @@ app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin',
       }
     }
     uploadedPath = '';
-    return res.status(201).json({ document: saved, message: source.document_type === 'signed_lease'
+    return res.status(201).json({ document: saved, message: isSignedSource
       ? 'A clearly marked edited copy was saved. The original signed PDF remains unchanged; changed terms require fresh signatures.'
       : 'A separate edited PDF copy was saved. The source document remains unchanged.' });
   } catch (error) {
