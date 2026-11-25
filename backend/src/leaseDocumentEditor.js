@@ -37,13 +37,14 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
     if (deleted.has(pageIndex)) throw Object.assign(new Error('Text cannot be added to a page being removed.'), { statusCode: 400 });
     const page = pages[pageIndex];
     const { width, height } = page.getSize();
-    const x = safeNumber(item.x, 0, width, 'Text X position');
-    const y = safeNumber(item.y, 0, height, 'Text Y position');
     const size = safeNumber(item.fontSize ?? 12, 6, 48, 'Text size');
+    const x = safeNumber(item.x, 0, width, 'Text X position');
+    const y = safeNumber(item.y, size, height - size, 'Text Y position');
     const text = String(item.text || '').trim().slice(0, 2000);
     if (!text) continue;
     const coverWidth = item.cover === true ? safeNumber(item.coverWidth ?? 220, 20, Math.min(500, width - x), 'Cover width') : 0;
-    if (coverWidth) page.drawRectangle({ x, y: y - size - 3, width: coverWidth, height: size + 8, color: rgb(1, 1, 1) });
+    const coverHeight = coverWidth ? safeNumber(item.coverHeight ?? size + 8, size + 8, Math.min(500, height - (y - size - 3)), 'Cover height') : 0;
+    if (coverWidth) page.drawRectangle({ x, y: y - size - 3, width: coverWidth, height: coverHeight, color: rgb(1, 1, 1) });
     page.drawText(text, { x, y, size, font, color: rgb(0.05, 0.05, 0.05), maxWidth: Math.max(20, width - x - 12) });
   }
   for (const item of images) {
