@@ -83,6 +83,19 @@ const formatSigningDate = (value) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Mogadishu',
 }).format(new Date(value));
 
+const formatLeaseDate = (value) => {
+  if (!value) return '—';
+  const raw = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T12:00:00+03:00`)
+    : new Date(raw);
+  return Number.isNaN(date.getTime())
+    ? raw
+    : new Intl.DateTimeFormat('en-GB', {
+        dateStyle: 'long',
+        timeZone: 'Africa/Mogadishu',
+      }).format(date);
+};
 
 const PAGE = { width: 595.28, height: 841.89, margin: 51.02 };
 const LAYOUT = {
@@ -174,7 +187,7 @@ const drawSignatureBlock = (doc, {
   doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
     .text('Tenant Signature', leftX, top + 6, { width: columnWidth, lineBreak: false });
   doc.font('Helvetica-Bold').fontSize(9.75).fillColor('#222222')
-    .text('Riiroow Apartment Management', rightX, top + 6, { width: columnWidth, lineBreak: false });
+    .text('Riiroow Apartments Management', rightX, top + 6, { width: columnWidth, lineBreak: false });
 
   // Signatures are overlaid inside the blank line area of the original form.
   // They never change the baseline of the printed name or date fields.
@@ -260,7 +273,7 @@ export const createSignedLeasePdf = ({
     });
     y += LAYOUT.logoHeight + 4.5;
     doc.font('Helvetica-Bold').fontSize(16.5).fillColor('#222222')
-      .text('RIIROOW APARTMENT', PAGE.margin, y, {
+      .text('RIIROOW APARTMENTS', PAGE.margin, y, {
         width: LAYOUT.contentWidth,
         align: 'center',
         lineBreak: false,
@@ -313,8 +326,8 @@ export const createSignedLeasePdf = ({
 
     y = addSectionHeading(doc, '2. Lease Term', y);
     y = drawDetailsGrid(doc, [
-      ['Start Date', snapshot.start_date],
-      ['End Date', snapshot.end_date],
+      ['Start Date', formatLeaseDate(snapshot.start_date)],
+      ['End Date', formatLeaseDate(snapshot.end_date)],
       ['Lease Status', snapshot.status],
       ['Unit', snapshot.unit_number ?? snapshot.unit_id],
     ], y);
@@ -389,7 +402,7 @@ export const createSignedLeasePdf = ({
       .strokeColor('#cccccc').lineWidth(0.75).stroke();
     y += 9;
     doc.font('Helvetica').fontSize(8.25).fillColor('#666666')
-      .text('Riiroow Apartment Management — Residential Lease Agreement',
+      .text('Riiroow Apartments Management — Residential Lease Agreement',
         PAGE.margin, y, {
           width: LAYOUT.contentWidth,
           align: 'center',
