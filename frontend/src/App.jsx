@@ -950,7 +950,7 @@ const [user, setUser] = useState(null);
     setLeaseDocumentsError('');
     try {
       const leaseId = encodeURIComponent(selectedLeaseForDocuments.id);
-      await requestJson(`/api/leases/${leaseId}/documents/${encodeURIComponent(document.id)}`, {
+      await requestJson(`/api/leases/${leaseId}/documents/${encodeURIComponent(document.id)}/file`, {
         method: 'DELETE',
       });
       await refreshLeaseDocuments(selectedLeaseForDocuments.id);
