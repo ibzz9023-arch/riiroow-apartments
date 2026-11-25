@@ -44,8 +44,8 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
     setImageDataUrl('');
     setImageName('');
     if (!file) return;
-    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 2 * 1024 * 1024) {
-      setError('Choose a PNG or JPEG image no larger than 2 MB.');
+    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 1 * 1024 * 1024) {
+      setError('Choose a PNG or JPEG image no larger than 1 MB.');
       return;
     }
     const reader = new FileReader();
@@ -179,7 +179,7 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
         <div className="panel">
           <h4>Insert image</h4>
           <div className="form-grid">
-            <label className="full-span">PNG/JPEG image (max 2 MB)<input type="file" accept="image/png,image/jpeg" onChange={(event) => handleImage(event.target.files?.[0])} /></label>
+            <label className="full-span">PNG/JPEG image (max 1 MB)<input type="file" accept="image/png,image/jpeg" onChange={(event) => handleImage(event.target.files?.[0])} /></label>
             <label>Page number<input type="number" min="1" value={imageDraft.page} onChange={(event) => setImageDraft((v) => ({ ...v, page: event.target.value }))} /></label>
             <label>Left position (pt)<input type="number" min="0" value={imageDraft.x} onChange={(event) => setImageDraft((v) => ({ ...v, x: event.target.value }))} /></label>
             <label>Bottom position (pt)<input type="number" min="0" value={imageDraft.y} onChange={(event) => setImageDraft((v) => ({ ...v, y: event.target.value }))} /></label>
