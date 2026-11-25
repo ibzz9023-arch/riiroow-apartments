@@ -78,8 +78,8 @@ export const isLeaseRenewal = (leaseOrSnapshot) => {
 // there by older lease-generation versions.
 export const getLeaseAdditionalNotes = (leaseOrSnapshot) => {
   let notes = String(leaseOrSnapshot?.notes ?? '').trim();
-  notes = notes.replace(/(?:^|\\s)Lease renewed from [^.]*\\.(?=\\s|$)/gi, ' ').trim();
-  const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  notes = notes.replace(/(?:^|\s)Lease renewed from [^.]*\\.(?=\s|$)/gi, ' ').trim();
+  const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const clauseOne = LEASE_AGREEMENT_CLAUSES[0];
   const normalizedNotes = normalize(notes);
   const normalizedBody = normalize(clauseOne.body);
