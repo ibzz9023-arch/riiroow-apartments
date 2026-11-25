@@ -814,6 +814,44 @@ app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountan
 });
 
 
+app.post('/api/leases/:id/documents/:documentId/preview-edit', requireRoles('Admin', 'Manager'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const lease = await findLeaseDocumentLease(req.params.id);
+    if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+    const { data: source, error: sourceError } = await supabaseServiceRole
+      .from('lease_documents')
+      .select('id, original_name, storage_path, mime_type, document_type')
+      .eq('id', req.params.documentId)
+      .eq('lease_id', lease.id)
+      .maybeSingle();
+    if (sourceError) throw sourceError;
+    if (!source) return res.status(404).json({ error: 'Lease document not found.' });
+    if (source.mime_type !== 'application/pdf') return res.status(415).json({ error: 'Only PDF documents can be edited.' });
+    const { data: sourceBlob, error: downloadError } = await supabaseServiceRole.storage
+      .from(LEASE_DOCUMENT_BUCKET).download(source.storage_path);
+    if (downloadError) throw downloadError;
+    const sourcePdf = Buffer.from(await sourceBlob.arrayBuffer());
+    const previewPdf = await editLeasePdf({
+      sourcePdf,
+      textItems: req.body?.textItems || [],
+      images: req.body?.images || [],
+      deletePageIndices: req.body?.deletePageIndices || [],
+      isSignedSource: source.document_type === 'signed_lease' || String(source.original_name || '').includes('EDITED_COPY_NOT_EXECUTED'),
+    });
+    return res.status(200)
+      .type('application/pdf')
+      .set('Content-Disposition', 'inline; filename="lease-correction-preview.pdf"')
+      .send(previewPdf);
+  } catch (error) {
+    console.error('Lease PDF preview failed:', error?.message || error);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to preview the PDF changes. The source document remains unchanged.',
+    });
+  }
+});
+
 app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin', 'Manager'), async (req, res) => {
   res.set('Cache-Control', 'no-store');
   let uploadedPath = '';
