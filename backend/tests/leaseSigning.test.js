@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { createSignedLeasePdf, decodeSignaturePng, hashLeaseSnapshot } from '../src/leaseSigning.js';
 
 
@@ -111,4 +111,19 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
   });
   assert.ok(pdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
   assert.ok(pdf.length > 1000);
+
+  // PDFKit compresses page content streams; inspect the rendered text so
+  // the manager identity cannot silently disappear from the signed copy.
+  const pdfSource = pdf.toString('latin1');
+  const compressedStreams = [...pdfSource.matchAll(/<<[\s\S]*?\/FlateDecode[\s\S]*?>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/g)];
+  const renderedText = compressedStreams
+    .map((match) => inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1'))
+    .join('\n');
+  // PDFKit stores text as hexadecimal glyph runs, sometimes splitting a
+  // visible word across adjacent runs to apply kerning.
+  const decodedGlyphRuns = [...renderedText.matchAll(/<([0-9a-fA-F]+)>/g)]
+    .map((match) => Buffer.from(match[1], 'hex').toString('utf8'))
+    .join('');
+  assert.ok(decodedGlyphRuns.includes('Test Tenant'));
+  assert.ok(decodedGlyphRuns.includes('Test Manager'));
 });

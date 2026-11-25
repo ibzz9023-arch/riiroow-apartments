@@ -156,6 +156,7 @@ const drawSignatureBlock = (doc, {
   tenantName,
   tenantSignedAt,
   managerSignedAt,
+  managerName,
 }) => {
   const gap = LAYOUT.signatureGap;
   const columnWidth = (LAYOUT.contentWidth - gap) / 2;
@@ -189,6 +190,11 @@ const drawSignatureBlock = (doc, {
 
   doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
     .text('Name: ' + String(tenantName || '—'), leftX, top + 44, {
+      width: columnWidth,
+      lineBreak: false,
+    });
+  doc.font('Helvetica').fontSize(9.75).fillColor('#222222')
+    .text('Name: ' + String(managerName || '—'), rightX, top + 44, {
       width: columnWidth,
       lineBreak: false,
     });
@@ -329,6 +335,7 @@ export const createSignedLeasePdf = ({
       tenantSignature,
       managerSignature,
       tenantName: tenantName || snapshot.tenant_name,
+      managerName,
       tenantSignedAt,
       managerSignedAt,
     });

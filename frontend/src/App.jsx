@@ -2538,11 +2538,46 @@ const handleLogin = async (event) => {
     }
 
     .signature {
+      position: relative;
       border-top: 1px solid #222;
-      padding-top: 8px;
-      min-height: 100px;
+      height: 75pt;
+      min-height: 75pt;
+      padding: 0;
       break-inside: avoid;
       page-break-inside: avoid;
+    }
+
+    .signature-title {
+      position: absolute;
+      top: 6pt;
+      left: 0;
+      right: 0;
+      line-height: 12pt;
+    }
+
+    .signature-mark-space {
+      position: absolute;
+      top: 17pt;
+      left: 0;
+      width: 100%;
+      height: 24pt;
+    }
+
+    .signature-name {
+      position: absolute;
+      top: 44pt;
+      left: 0;
+      right: 0;
+      line-height: 12pt;
+    }
+
+    .signature-date {
+      position: absolute;
+      top: 62pt;
+      left: 0;
+      right: 0;
+      line-height: 10pt;
+      font-size: 11px;
     }
 
     .lease-signature-image {
@@ -2682,14 +2717,17 @@ const handleLogin = async (event) => {
 
   <div class="signatures">
     <div class="signature">
-      <strong>Tenant Signature</strong><br><br>
-      Name: ${safe(tenantName)}<br>
-      Date: ____________________
+      <strong class="signature-title">Tenant Signature</strong>
+      <div class="signature-mark-space"></div>
+      <div class="signature-name">Name: ${safe(tenantName)}</div>
+      <div class="signature-date">Date: ____________________</div>
     </div>
 
     <div class="signature authorized-signature">
-      <strong>Riiroow Apartment Management</strong><br>
-      Date: ____________________
+      <strong class="signature-title">Riiroow Apartment Management</strong>
+      <div class="signature-mark-space"></div>
+      <div class="signature-name">Name: ____________________</div>
+      <div class="signature-date">Date: ____________________</div>
     </div>
   </div>
 
