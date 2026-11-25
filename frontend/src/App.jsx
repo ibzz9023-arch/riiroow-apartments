@@ -2519,6 +2519,14 @@ const handleLogin = async (event) => {
 
     .clause {
       margin: 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .renewal-note {
+      margin: 10px 0 0;
+      font-weight: 700;
+      text-align: center;
     }
 
     .notes {
