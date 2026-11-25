@@ -938,6 +938,32 @@ const [user, setUser] = useState(null);
     }
   };
 
+  const deleteLeaseDocument = async (document) => {
+    if (!selectedLeaseForDocuments || !document?.id) return;
+    const isSigned = document.documentType === 'signed_lease';
+    const warning = isSigned
+      ? `Permanently delete the archived SIGNED lease PDF “${document.originalName}”? This removes the signed PDF from the tenant QR archive and private storage. The signing history is retained, but the PDF itself cannot be recovered unless it is regenerated from retained signature records.`
+      : `Permanently delete “${document.originalName}” from this lease and its tenant QR archive?`;
+    if (!window.confirm(warning)) return;
+
+    setLeaseDocumentsLoading(true);
+    setLeaseDocumentsError('');
+    try {
+      const leaseId = encodeURIComponent(selectedLeaseForDocuments.id);
+      await requestJson(`/api/leases/${leaseId}/documents/${encodeURIComponent(document.id)}/file`, {
+        method: 'DELETE',
+      });
+      await refreshLeaseDocuments(selectedLeaseForDocuments.id);
+      setInfoMessage(isSigned
+        ? 'Signed lease PDF deleted. The signature history and other lease records remain.'
+        : 'Uploaded lease document deleted.');
+    } catch (deleteError) {
+      setLeaseDocumentsError(deleteError.message || 'Unable to delete this lease document.');
+    } finally {
+      setLeaseDocumentsLoading(false);
+    }
+  };
+
   const regenerateCorrectedSignedLease = async () => {
     if (!selectedLeaseForDocuments || signedLeaseRegenerating) return;
     setSignedLeaseRegenerating(true);
@@ -4809,6 +4835,9 @@ const handleLogin = async (event) => {
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
+                                {['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn danger-btn" type="button" disabled={leaseDocumentsLoading} onClick={() => deleteLeaseDocument(document)}>Delete file</button>
+                                ) : null}
                               </div>
                             </div>
                           ))}
@@ -4829,6 +4858,9 @@ const handleLogin = async (event) => {
                                 <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                ) : null}
+                                {['admin', 'manager'].includes(role) ? (
+                                  <button className="small-btn danger-btn" type="button" disabled={leaseDocumentsLoading} onClick={() => deleteLeaseDocument(document)}>Delete file</button>
                                 ) : null}
                               </div>
                             </div>
