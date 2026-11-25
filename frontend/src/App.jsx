@@ -894,6 +894,35 @@ const [user, setUser] = useState(null);
     }
     return response.blob();
   };
+  const openLeaseDocumentFile = async (document, download = false) => {
+    if (!document) return;
+    const previewTab = download ? null : window.open('about:blank', '_blank');
+    try {
+      const blob = await requestDocumentDownload(download ? document.downloadUrl : document.previewUrl);
+      if (!(blob instanceof Blob) || !blob.size) throw new Error('The document returned an empty file.');
+      const objectUrl = URL.createObjectURL(blob);
+      if (download) {
+        const link = window.document.createElement('a');
+        link.href = objectUrl;
+        link.download = document.originalName || 'lease-document';
+        window.document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else if (previewTab) {
+        previewTab.location.href = objectUrl;
+      } else {
+        const link = window.document.createElement('a');
+        link.href = objectUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch (fileError) {
+      if (previewTab) previewTab.close();
+      setLeaseDocumentsError(fileError.message || 'Unable to open this lease document.');
+    }
+  };
   const refreshLeaseDocuments = async (leaseId) => {
     const data = await requestJson(`/api/leases/${encodeURIComponent(leaseId)}/documents`);
     setLeaseDocuments(Array.isArray(data.documents) ? data.documents : []);
@@ -4843,8 +4872,8 @@ const handleLogin = async (event) => {
                               <p className="muted">Signed lease agreement · {(Number(document.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB</p>
                               <p className="muted">{document.createdAt ? `Added ${formatDateTime(document.createdAt)}` : ''}</p>
                               <div className="form-actions">
-                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
-                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+                                <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, false)}>Open / Print</button>
+                                <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, true)}>Download PDF</button>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
@@ -4867,8 +4896,8 @@ const handleLogin = async (event) => {
                                 {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
                               </p>
                               <div className="form-actions">
-                                {document.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a> : null}
-                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">{document.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'Download Word' : 'Download'}</a>
+                                {document.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, false)}>Open / Print</button> : null}
+                                <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, true)}>{document.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'Download Word' : 'Download'}</button>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
