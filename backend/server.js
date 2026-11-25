@@ -944,8 +944,10 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
     const unitNumber = String(requestedFields.unitNumber ?? lease.unit_number ?? '').trim();
     const startDate = String(requestedFields.startDate ?? lease.start_date ?? '').trim();
     const endDate = String(requestedFields.endDate ?? lease.end_date ?? '').trim();
-    const monthlyRent = Number(requestedFields.monthlyRent ?? lease.monthly_rent ?? 0);
-    const securityDeposit = Number(requestedFields.securityDeposit ?? lease.security_deposit ?? 0);
+    const rentValue = requestedFields.monthlyRent ?? lease.monthly_rent;
+    const depositValue = requestedFields.securityDeposit ?? lease.security_deposit;
+    const monthlyRent = Number(rentValue);
+    const securityDeposit = Number(depositValue);
     const validDate = (value) => {
       if (!value) return true;
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
@@ -953,6 +955,7 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
       return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
     };
     if (!tenantName || tenantName.length > 160 || !unitNumber || unitNumber.length > 40 ||
+        String(rentValue ?? '').trim() === '' || String(depositValue ?? '').trim() === '' ||
         !validDate(startDate) || !validDate(endDate) ||
         (startDate && endDate && endDate < startDate) ||
         !Number.isFinite(monthlyRent) || monthlyRent < 0 || monthlyRent > 10000000 ||
@@ -977,7 +980,7 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
     });
     if (uploadError) throw uploadError;
     const { data: document, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
-      lease_id: lease.id, original_name: 'CORRECTED_LEASE_DRAFT_REQUIRES_RESIGNING.pdf',
+      lease_id: lease.id, original_name: `CORRECTED_LEASE_DRAFT_REQUIRES_RESIGNING_${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`,
       storage_path: uploadedPath, mime_type: 'application/pdf', file_size: pdf.length,
       document_type: 'manual', created_by: req.auth.sub,
     }]).select('id, original_name, created_at').single();
