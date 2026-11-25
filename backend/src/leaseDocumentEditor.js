@@ -56,6 +56,7 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
     if (coverWidth) page.drawRectangle({ x, y: y - size - 3, width: coverWidth, height: coverHeight, color: rgb(1, 1, 1) });
     page.drawText(text, { x, y, size, font, color: rgb(0.05, 0.05, 0.05), maxWidth: Math.max(20, width - x - 12) });
   }
+  let totalImageBytes = 0;
   for (const item of images) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       throw Object.assign(new Error('Each image edit must be a valid object.'), { statusCode: 400 });
@@ -66,8 +67,9 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
     const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
     if (!match) throw Object.assign(new Error('Images must be PNG or JPEG data.'), { statusCode: 400 });
     const bytes = Buffer.from(match[2], 'base64');
-    if (!bytes.length || bytes.length > 1 * 1024 * 1024 || bytes.toString('base64') !== match[2]) {
-      throw Object.assign(new Error('Each inserted image must be valid and no larger than 1 MB.'), { statusCode: 400 });
+    totalImageBytes += bytes.length;
+    if (!bytes.length || bytes.length > 1 * 1024 * 1024 || totalImageBytes > 3 * 1024 * 1024 || bytes.toString('base64') !== match[2]) {
+      throw Object.assign(new Error('Images must each be valid and no larger than 1 MB, with a combined limit of 3 MB.'), { statusCode: 400 });
     }
     const image = match[1] === 'png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
     const page = pages[pageIndex];
