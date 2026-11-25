@@ -852,7 +852,7 @@ app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin',
     const { data: saved, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
       lease_id: lease.id, original_name: originalName, storage_path: uploadedPath,
       mime_type: 'application/pdf', file_size: editedPdf.length,
-      document_type: source.document_type || 'manual', created_by: req.auth.sub,
+      document_type: 'manual', created_by: req.auth.sub,
     }]).select('id, original_name, created_at').single();
     if (insertError) throw insertError;
     if (source.document_type === 'signed_lease') {
@@ -900,7 +900,32 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
       !item || typeof item.title !== 'string' || !item.title.trim() || item.title.length > 160 ||
       typeof item.body !== 'string' || !item.body.trim() || item.body.length > 5000
     )) return res.status(400).json({ error: 'Provide all 16 lease clauses with valid titles and text.' });
-    const pdf = await createCorrectedLeaseDraftPdf({ lease, tenant, clauses });
+
+    const requestedFields = req.body?.leaseFields || {};
+    const tenantName = String(requestedFields.tenantName ?? tenant.name ?? '').trim();
+    const unitNumber = String(requestedFields.unitNumber ?? lease.unit_number ?? '').trim();
+    const startDate = String(requestedFields.startDate ?? lease.start_date ?? '').trim();
+    const endDate = String(requestedFields.endDate ?? lease.end_date ?? '').trim();
+    const monthlyRent = Number(requestedFields.monthlyRent ?? lease.monthly_rent ?? 0);
+    const securityDeposit = Number(requestedFields.securityDeposit ?? lease.security_deposit ?? 0);
+    const validDate = (value) => !value || /^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+    if (!tenantName || tenantName.length > 160 || !unitNumber || unitNumber.length > 40 ||
+        !validDate(startDate) || !validDate(endDate) ||
+        (startDate && endDate && endDate < startDate) ||
+        !Number.isFinite(monthlyRent) || monthlyRent < 0 || monthlyRent > 10000000 ||
+        !Number.isFinite(securityDeposit) || securityDeposit < 0 || securityDeposit > 10000000) {
+      return res.status(400).json({ error: 'Lease details are invalid. Check the tenant, unit, dates, rent and deposit.' });
+    }
+    const draftLease = {
+      ...lease,
+      unit_number: unitNumber,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      monthly_rent: monthlyRent,
+      security_deposit: securityDeposit,
+    };
+    const draftTenant = { ...tenant, name: tenantName };
+    const pdf = await createCorrectedLeaseDraftPdf({ lease: draftLease, tenant: draftTenant, clauses });
     if (pdf.length > LEASE_DOCUMENT_MAX_SIZE) return res.status(413).json({ error: 'The corrected draft exceeds the 10 MB document limit.' });
     const id = crypto.randomUUID();
     uploadedPath = `${lease.id}/drafts/${id}.pdf`;
