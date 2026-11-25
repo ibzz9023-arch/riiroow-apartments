@@ -150,7 +150,7 @@ export const createCorrectedLeaseDraftPdf = ({ lease, tenant, clauses }) => new 
 
 
 const xmlEscape = (value) => String(value ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
 const crc32 = (buffer) => {
