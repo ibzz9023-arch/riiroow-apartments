@@ -3,7 +3,7 @@ import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_ITEMS = 100;
-const MAX_IMAGES = 5;
+const MAX_IMAGES = 3;
 const safeNumber = (value, min, max, label) => {
   const number = Number(value);
   if (!Number.isFinite(number) || number < min || number > max) {
@@ -57,8 +57,8 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
     const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
     if (!match) throw Object.assign(new Error('Images must be PNG or JPEG data.'), { statusCode: 400 });
     const bytes = Buffer.from(match[2], 'base64');
-    if (!bytes.length || bytes.length > 2 * 1024 * 1024 || bytes.toString('base64') !== match[2]) {
-      throw Object.assign(new Error('Each inserted image must be valid and no larger than 2 MB.'), { statusCode: 400 });
+    if (!bytes.length || bytes.length > 1 * 1024 * 1024 || bytes.toString('base64') !== match[2]) {
+      throw Object.assign(new Error('Each inserted image must be valid and no larger than 1 MB.'), { statusCode: 400 });
     }
     const image = match[1] === 'png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
     const page = pages[pageIndex];
