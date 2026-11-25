@@ -908,7 +908,12 @@ app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin
     const endDate = String(requestedFields.endDate ?? lease.end_date ?? '').trim();
     const monthlyRent = Number(requestedFields.monthlyRent ?? lease.monthly_rent ?? 0);
     const securityDeposit = Number(requestedFields.securityDeposit ?? lease.security_deposit ?? 0);
-    const validDate = (value) => !value || /^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+    const validDate = (value) => {
+      if (!value) return true;
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
     if (!tenantName || tenantName.length > 160 || !unitNumber || unitNumber.length > 40 ||
         !validDate(startDate) || !validDate(endDate) ||
         (startDate && endDate && endDate < startDate) ||
