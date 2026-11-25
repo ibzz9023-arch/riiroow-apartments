@@ -567,8 +567,8 @@ function LeaseDocumentsPublicPage({ accessToken }) {
                       {document.createdAt ? ` · Added ${new Date(document.createdAt).toLocaleDateString()}` : ''}
                     </p>
                     <div className="form-actions">
-                      <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
-                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                      {document.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a> : null}
+                      <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">{document.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'Download Word' : 'Download'}</a>
                     </div>
                   </section>
                 ))}
@@ -882,6 +882,18 @@ const [user, setUser] = useState(null);
     return blob;
   };
 
+  const requestDocumentDownload = async (path) => {
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const response = await fetch(apiBaseUrl + path, {
+      method: 'GET',
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to download the lease document.');
+    }
+    return response.blob();
+  };
   const refreshLeaseDocuments = async (leaseId) => {
     const data = await requestJson(`/api/leases/${encodeURIComponent(leaseId)}/documents`);
     setLeaseDocuments(Array.isArray(data.documents) ? data.documents : []);
@@ -4756,10 +4768,11 @@ const handleLogin = async (event) => {
                       <LeaseClauseEditor
                         lease={selectedLeaseForDocuments}
                         requestJson={requestJson}
+                        requestDownload={requestDocumentDownload}
                         onClose={() => setLeaseClauseEditorOpen(false)}
                         onSaved={async (result) => {
                           setLeaseClauseEditorOpen(false);
-                          setInfoMessage(result.message || 'Corrected draft saved separately. It is unsigned and does not replace the original agreement.');
+                          setInfoMessage(result.message || 'Editable Word lease draft exported and saved separately.');
                           try {
                             await refreshLeaseDocuments(selectedLeaseForDocuments.id);
                           } catch {
@@ -4854,8 +4867,8 @@ const handleLogin = async (event) => {
                                 {document.createdAt ? ` · Added ${formatDateTime(document.createdAt)}` : ''}
                               </p>
                               <div className="form-actions">
-                                <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a>
-                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">Download</a>
+                                {document.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? <a className="small-btn" href={document.previewUrl} target="_blank" rel="noopener noreferrer">Open / Print</a> : null}
+                                <a className="small-btn" href={document.downloadUrl} target="_blank" rel="noopener noreferrer">{document.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'Download Word' : 'Download'}</a>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
