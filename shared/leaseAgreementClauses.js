@@ -71,3 +71,25 @@ export const isLeaseRenewal = (leaseOrSnapshot) => {
   const notes = String(leaseOrSnapshot?.notes ?? '');
   return /lease\s+renewed\s+from|renewal\s+of\s+the\s+previous\s+lease/i.test(notes);
 };
+
+
+// Renewal metadata is stored in the legacy notes field. Keep it out of the
+// visible Additional Notes box, and suppress Clause 1 text accidentally saved
+// there by older lease-generation versions.
+export const getLeaseAdditionalNotes = (leaseOrSnapshot) => {
+  let notes = String(leaseOrSnapshot?.notes ?? '').trim();
+  notes = notes.replace(/(?:^|\\s)Lease renewed from [^.]*\\.(?=\\s|$)/gi, ' ').trim();
+  const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  const clauseOne = LEASE_AGREEMENT_CLAUSES[0];
+  const normalizedNotes = normalize(notes);
+  const normalizedBody = normalize(clauseOne.body);
+  const normalizedTitleAndBody = normalize(clauseOne.title + ' ' + clauseOne.body);
+  if (
+    !normalizedNotes ||
+    normalizedNotes === normalizedBody ||
+    normalizedNotes === normalizedTitleAndBody
+  ) {
+    return '';
+  }
+  return notes;
+};
