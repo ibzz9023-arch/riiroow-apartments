@@ -1095,7 +1095,7 @@ app.post(
 );
 
 app.delete(
-  '/api/leases/:id/documents/:documentId',
+  '/api/leases/:id/documents/:documentId/file',
   requireRoles('Admin', 'Manager'),
   async (req, res) => {
     res.set('Cache-Control', 'no-store');
