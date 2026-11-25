@@ -66,3 +66,15 @@ test('corrected lease draft is a valid unsigned PDF containing the complete clau
   const parsed = await PdfLibDocument.load(pdfBytes);
   assert.ok(parsed.getPageCount() >= 1);
 });
+
+test('signed lease edits reject pasted image signatures', async () => {
+  const source = await makeSourcePdf();
+  await assert.rejects(
+    () => editLeasePdf({
+      sourcePdf: source,
+      images: [{ pageIndex: 0, x: 20, y: 20, width: 40, height: 20, dataUrl: 'data:image/png;base64,aGVsbG8=' }],
+      isSignedSource: true,
+    }),
+    /Images and signature pictures cannot be inserted/
+  );
+});
