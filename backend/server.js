@@ -839,7 +839,7 @@ app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin',
       textItems: req.body?.textItems || [],
       images: req.body?.images || [],
       deletePageIndices: req.body?.deletePageIndices || [],
-      isSignedSource: source.document_type === 'signed_lease',
+      isSignedSource: source.document_type === 'signed_lease' || String(source.original_name || '').includes('EDITED_COPY_NOT_EXECUTED'),
     });
     const revisionId = crypto.randomUUID();
     uploadedPath = `${lease.id}/edited/${revisionId}.pdf`;
