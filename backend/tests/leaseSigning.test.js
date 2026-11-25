@@ -119,6 +119,11 @@ test('createSignedLeasePdf generates a readable PDF with both signatures and arc
   const renderedText = compressedStreams
     .map((match) => inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1'))
     .join('\n');
-  assert.match(renderedText, /Test Tenant/);
-  assert.match(renderedText, /Test Manager/);
+  // PDFKit stores text as hexadecimal glyph runs, sometimes splitting a
+  // visible word across adjacent runs to apply kerning.
+  const decodedGlyphRuns = [...renderedText.matchAll(/<([0-9a-fA-F]+)>/g)]
+    .map((match) => Buffer.from(match[1], 'hex').toString('utf8'))
+    .join('');
+  assert.ok(decodedGlyphRuns.includes('Test Tenant'));
+  assert.ok(decodedGlyphRuns.includes('Test Manager'));
 });
