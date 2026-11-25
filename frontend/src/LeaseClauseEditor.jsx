@@ -71,7 +71,7 @@ export default function LeaseClauseEditor({ lease, requestJson, onClose, onSaved
         <button type="button" className="secondary-btn" onClick={onClose} disabled={saving}>Close editor</button>
       </div>
       <div className="notice warning">
-        This draft does not change the active lease record or replace a signed agreement. Both tenant and manager must review and sign the corrected version before changed terms take effect.
+        This editor starts from the standard 16-clause template; it does not extract text from an existing signed PDF. The draft does not change the active lease record or replace a signed agreement. For now, download or print it for both parties to sign; the current in-app signing flow does not yet capture signatures on this custom draft.
       </div>
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       <div className="panel">
