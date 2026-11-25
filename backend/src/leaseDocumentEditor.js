@@ -36,6 +36,9 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
   if (deleted.size >= pages.length) throw Object.assign(new Error('At least one PDF page must remain.'), { statusCode: 400 });
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   for (const item of textItems) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw Object.assign(new Error('Each text edit must be a valid object.'), { statusCode: 400 });
+    }
     const pageIndex = safePageIndex(item.pageIndex, pages.length, 'Page number');
     if (deleted.has(pageIndex)) throw Object.assign(new Error('Text cannot be added to a page being removed.'), { statusCode: 400 });
     const page = pages[pageIndex];
@@ -51,6 +54,9 @@ export const editLeasePdf = async ({ sourcePdf, textItems = [], images = [], del
     page.drawText(text, { x, y, size, font, color: rgb(0.05, 0.05, 0.05), maxWidth: Math.max(20, width - x - 12) });
   }
   for (const item of images) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw Object.assign(new Error('Each image edit must be a valid object.'), { statusCode: 400 });
+    }
     const pageIndex = safePageIndex(item.pageIndex, pages.length, 'Image page number');
     if (deleted.has(pageIndex)) throw Object.assign(new Error('An image cannot be added to a page being removed.'), { statusCode: 400 });
     const dataUrl = String(item.dataUrl || '');
