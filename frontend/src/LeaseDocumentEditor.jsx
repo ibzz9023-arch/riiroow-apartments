@@ -59,6 +59,7 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
   };
 
   const addImage = () => {
+    if (images.length >= 3) { setError('Add no more than three images per PDF edit.'); return; }
     const page = Number(imageDraft.page);
     const x = Number(imageDraft.x);
     const y = Number(imageDraft.y);
