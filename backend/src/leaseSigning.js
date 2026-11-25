@@ -329,7 +329,6 @@ export const createSignedLeasePdf = ({
       ['Start Date', formatLeaseDate(snapshot.start_date)],
       ['End Date', formatLeaseDate(snapshot.end_date)],
       ['Lease Status', snapshot.status],
-      ['Unit', snapshot.unit_number ?? snapshot.unit_id],
     ], y);
 
     y = addSectionHeading(doc, '3. Rent and Security Deposit', y);
