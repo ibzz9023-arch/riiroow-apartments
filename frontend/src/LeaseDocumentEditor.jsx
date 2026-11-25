@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const emptyText = { page: '1', x: '55', y: '700', fontSize: '12', coverWidth: '220', text: '', cover: true };
+const emptyText = { page: '1', x: '55', y: '700', fontSize: '12', coverWidth: '220', coverHeight: '40', text: '', cover: true };
 const emptyImage = { page: '1', x: '55', y: '600', width: '120', height: '60' };
 
 export default function LeaseDocumentEditor({ lease, document, requestJson, onClose, onSaved }) {
@@ -22,13 +22,13 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
     const coverWidth = Number(textDraft.coverWidth);
     if (!Number.isInteger(page) || page < 1 || !Number.isFinite(x) || x < 0 || !Number.isFinite(y) || y < 0 ||
         !Number.isFinite(fontSize) || fontSize < 6 || fontSize > 48 || !textDraft.text.trim() ||
-        (textDraft.cover && (!Number.isFinite(coverWidth) || coverWidth < 20 || coverWidth > 500))) {
+        (textDraft.cover && (!Number.isFinite(coverWidth) || coverWidth < 20 || coverWidth > 500 || !Number.isFinite(Number(textDraft.coverHeight)) || Number(textDraft.coverHeight) < fontSize + 8 || Number(textDraft.coverHeight) > 500))) {
       setError('Enter a valid page, position, font size and replacement text.');
       return;
     }
     setTextItems((items) => [...items, {
       pageIndex: page - 1, x, y, fontSize, text: textDraft.text.trim(),
-      cover: Boolean(textDraft.cover), coverWidth: textDraft.cover ? coverWidth : undefined,
+      cover: Boolean(textDraft.cover), coverWidth: textDraft.cover ? coverWidth : undefined, coverHeight: textDraft.cover ? Number(textDraft.coverHeight) : undefined,
     }]);
     setTextDraft({ ...emptyText, page: textDraft.page });
     setError('');
@@ -122,6 +122,7 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, onCl
           <label>Font size<input type="number" min="6" max="48" value={textDraft.fontSize} onChange={(event) => setTextDraft((v) => ({ ...v, fontSize: event.target.value }))} /></label>
           <label className="full-span">Replacement text<textarea rows="3" maxLength={2000} value={textDraft.text} onChange={(event) => setTextDraft((v) => ({ ...v, text: event.target.value }))} placeholder="Enter the text to place on the page" /></label>
           <label>White cover width (pt)<input type="number" min="20" max="500" value={textDraft.coverWidth} disabled={!textDraft.cover} onChange={(event) => setTextDraft((v) => ({ ...v, coverWidth: event.target.value }))} /></label>
+          <label>White cover height (pt)<input type="number" min="20" max="500" value={textDraft.coverHeight} disabled={!textDraft.cover} onChange={(event) => setTextDraft((v) => ({ ...v, coverHeight: event.target.value }))} /></label>
           <label className="lease-editor-check"><input type="checkbox" checked={textDraft.cover} onChange={(event) => setTextDraft((v) => ({ ...v, cover: event.target.checked }))} /> Cover old text first</label>
         </div>
         <button type="button" className="small-btn" onClick={addText}>Add text change</button>
