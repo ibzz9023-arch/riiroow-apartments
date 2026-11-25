@@ -18,6 +18,7 @@ import {
 } from './src/moveOutRequests.js';
 import { financialRouter } from './src/financialRoutes.js';
 import { leaseSigningRouter, tenantLeaseSigningRouter } from './src/leaseSigningRoutes.js';
+import { editLeasePdf, createCorrectedLeaseDraftPdf } from './src/leaseDocumentEditor.js';
 import {
   submitApprovalRequest,
   listApprovalRequests,
@@ -809,6 +810,119 @@ app.get('/api/leases/:id/documents', requireRoles('Admin', 'Manager', 'Accountan
     return res.status(500).json({
       error: 'Unable to load lease documents. Confirm the lease documents migration and private Storage bucket are configured.',
     });
+  }
+});
+
+
+app.post('/api/leases/:id/documents/:documentId/edit-pdf', requireRoles('Admin', 'Manager'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let uploadedPath = '';
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const lease = await findLeaseDocumentLease(req.params.id);
+    if (!lease) return res.status(404).json({ error: 'Lease not found.' });
+    const { data: source, error: sourceError } = await supabaseServiceRole
+      .from('lease_documents')
+      .select('id, original_name, storage_path, mime_type, document_type')
+      .eq('id', req.params.documentId)
+      .eq('lease_id', lease.id)
+      .maybeSingle();
+    if (sourceError) throw sourceError;
+    if (!source) return res.status(404).json({ error: 'Lease document not found.' });
+    if (source.mime_type !== 'application/pdf') return res.status(415).json({ error: 'Only PDF documents can be edited.' });
+    const { data: sourceBlob, error: downloadError } = await supabaseServiceRole.storage
+      .from(LEASE_DOCUMENT_BUCKET).download(source.storage_path);
+    if (downloadError) throw downloadError;
+    const sourcePdf = Buffer.from(await sourceBlob.arrayBuffer());
+    const editedPdf = await editLeasePdf({
+      sourcePdf,
+      textItems: req.body?.textItems || [],
+      images: req.body?.images || [],
+      deletePageIndices: req.body?.deletePageIndices || [],
+      isSignedSource: source.document_type === 'signed_lease',
+    });
+    const revisionId = crypto.randomUUID();
+    uploadedPath = `${lease.id}/edited/${revisionId}.pdf`;
+    const { error: uploadError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).upload(uploadedPath, editedPdf, {
+      contentType: 'application/pdf', upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const prefix = source.document_type === 'signed_lease' ? 'EDITED_COPY_NOT_EXECUTED' : 'Edited_Copy';
+    const originalName = `${prefix}_${cleanLeaseDocumentName(source.original_name).replace(/\.pdf$/i, '')}.pdf`.slice(0, 255);
+    const { data: saved, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
+      lease_id: lease.id, original_name: originalName, storage_path: uploadedPath,
+      mime_type: 'application/pdf', file_size: editedPdf.length,
+      document_type: source.document_type || 'manual', created_by: req.auth.sub,
+    }]).select('id, original_name, created_at').single();
+    if (insertError) throw insertError;
+    if (source.document_type === 'signed_lease') {
+      const { data: signingSession } = await supabaseServiceRole.from('lease_signing_sessions')
+        .select('id').eq('lease_id', lease.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (signingSession?.id) {
+        const { error: auditError } = await supabaseServiceRole.from('lease_signing_events').insert([{
+          lease_id: lease.id, session_id: signingSession.id, event_type: 'signed_pdf_generated',
+          actor_type: 'manager', actor_user_id: req.auth.sub, actor_name: req.auth.name || null,
+          metadata: { editedCopy: true, originalDocumentId: source.id, newDocumentId: saved.id, requiresResigning: true },
+        }]);
+        if (auditError) console.warn('Edited lease audit event could not be recorded:', auditError.message || auditError);
+      }
+    }
+    uploadedPath = '';
+    return res.status(201).json({ document: saved, message: source.document_type === 'signed_lease'
+      ? 'A clearly marked edited copy was saved. The original signed PDF remains unchanged; changed terms require fresh signatures.'
+      : 'A separate edited PDF copy was saved. The source document remains unchanged.' });
+  } catch (error) {
+    if (uploadedPath) {
+      const { error: cleanupError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).remove([uploadedPath]);
+      if (cleanupError) console.warn('Edited PDF cleanup failed:', cleanupError.message || cleanupError);
+    }
+    console.error('Lease PDF editing failed:', error?.message || error);
+    return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to edit this PDF. The original document has not been changed.' });
+  }
+});
+
+app.post('/api/leases/:id/documents/create-corrected-draft', requireRoles('Admin', 'Manager'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let uploadedPath = '';
+  try {
+    if (!requireLeaseDocumentStorage(res)) return;
+    const leaseRecord = await findLeaseDocumentLease(req.params.id);
+    if (!leaseRecord) return res.status(404).json({ error: 'Lease not found.' });
+    const { data: lease, error: leaseError } = await supabaseServiceRole.from('leases')
+      .select('id, tenant_id, unit_number, start_date, end_date, monthly_rent, security_deposit, notes')
+      .eq('id', leaseRecord.id).single();
+    if (leaseError) throw leaseError;
+    const { data: tenant, error: tenantError } = await supabaseServiceRole.from('tenants')
+      .select('id, name').eq('id', lease.tenant_id).single();
+    if (tenantError) throw tenantError;
+    const clauses = req.body?.clauses;
+    if (!Array.isArray(clauses) || clauses.length !== 16 || clauses.some((item) =>
+      !item || typeof item.title !== 'string' || !item.title.trim() || item.title.length > 160 ||
+      typeof item.body !== 'string' || !item.body.trim() || item.body.length > 5000
+    )) return res.status(400).json({ error: 'Provide all 16 lease clauses with valid titles and text.' });
+    const pdf = await createCorrectedLeaseDraftPdf({ lease, tenant, clauses });
+    if (pdf.length > LEASE_DOCUMENT_MAX_SIZE) return res.status(413).json({ error: 'The corrected draft exceeds the 10 MB document limit.' });
+    const id = crypto.randomUUID();
+    uploadedPath = `${lease.id}/drafts/${id}.pdf`;
+    const { error: uploadError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).upload(uploadedPath, pdf, {
+      contentType: 'application/pdf', upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const { data: document, error: insertError } = await supabaseServiceRole.from('lease_documents').insert([{
+      lease_id: lease.id, original_name: 'CORRECTED_LEASE_DRAFT_REQUIRES_RESIGNING.pdf',
+      storage_path: uploadedPath, mime_type: 'application/pdf', file_size: pdf.length,
+      document_type: 'manual', created_by: req.auth.sub,
+    }]).select('id, original_name, created_at').single();
+    if (insertError) throw insertError;
+    uploadedPath = '';
+    return res.status(201).json({ document, message: 'Corrected draft saved separately. It is unsigned and does not replace the existing signed lease.' });
+  } catch (error) {
+    if (uploadedPath) {
+      const { error: cleanupError } = await supabaseServiceRole.storage.from(LEASE_DOCUMENT_BUCKET).remove([uploadedPath]);
+      if (cleanupError) console.warn('Corrected draft cleanup failed:', cleanupError.message || cleanupError);
+    }
+    console.error('Corrected lease draft creation failed:', error?.message || error);
+    return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to create the corrected lease draft. The existing lease remains unchanged.' });
   }
 });
 
