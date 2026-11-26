@@ -269,8 +269,8 @@ const isValidLeaseDocx = (buffer) => {
         const expanded = method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: 10 * 1024 * 1024 });
         if (expanded.length !== expandedSize) return false;
         const xml = expanded.toString('utf8');
-        if (name === '[Content_Types].xml' && !/<Types(?:\\s|>)/.test(xml)) return false;
-        if (name === 'word/document.xml' && !/<(?:\\w+:)?document(?:\\s|>)/.test(xml)) return false;
+        if (name === '[Content_Types].xml' && !/<Types(?:\s|>)/.test(xml)) return false;
+        if (name === 'word/document.xml' && !/<(?:\w+:)?document(?:\s|>)/.test(xml)) return false;
         required.set(name, true);
         totalExpanded += expandedSize;
       }
