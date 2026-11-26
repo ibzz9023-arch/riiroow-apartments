@@ -5,7 +5,6 @@ import ApprovalRequests from './ApprovalRequests.jsx';
 import QRCode from 'qrcode';
 import LeaseSigning from './LeaseSigning.jsx';
 import LeaseDocumentEditor from './LeaseDocumentEditor.jsx';
-import LeaseClauseEditor from './LeaseClauseEditor.jsx';
 import TenantQrShare from './TenantQrShare.jsx';
 import { LEASE_AGREEMENT_CLAUSES, LEASE_RENEWAL_STATEMENT, getLeaseAdditionalNotes, isLeaseRenewal } from '../../shared/leaseAgreementClauses.js';
 
@@ -645,7 +644,6 @@ const [user, setUser] = useState(null);
   const [leaseDocumentsUploading, setLeaseDocumentsUploading] = useState(false);
   const [signedLeaseRegenerating, setSignedLeaseRegenerating] = useState(false);
   const [editingLeaseDocument, setEditingLeaseDocument] = useState(null);
-  const [leaseClauseEditorOpen, setLeaseClauseEditorOpen] = useState(false);
   const [leaseDocumentAccessStatus, setLeaseDocumentAccessStatus] = useState({ enabled: false, revokedAt: null });
   const [leaseDocumentAccessUrl, setLeaseDocumentAccessUrl] = useState('');
   const [leaseDocumentQrDataUrl, setLeaseDocumentQrDataUrl] = useState('');
@@ -933,7 +931,6 @@ const [user, setUser] = useState(null);
   const openLeaseDocuments = async (lease) => {
     setSelectedLeaseForDocuments(lease);
     setEditingLeaseDocument(null);
-    setLeaseClauseEditorOpen(false);
     setLeaseDocuments([]);
     setLeaseDocumentFiles([]);
     setLeaseDocumentsError('');
@@ -4761,7 +4758,6 @@ const handleLogin = async (event) => {
                         onClick={() => {
                           setSelectedLeaseForDocuments(null);
                           setEditingLeaseDocument(null);
-                          setLeaseClauseEditorOpen(false);
                           setLeaseDocuments([]);
                                                 setLeaseDocumentAccessUrl('');
                           setLeaseDocumentQrDataUrl('');
@@ -4786,30 +4782,6 @@ const handleLogin = async (event) => {
                       />
                     ) : null}
 
-                    {['admin', 'manager'].includes(role) ? (
-                      <div className="form-actions">
-                        <button type="button" className="secondary-btn" onClick={() => { setLeaseClauseEditorOpen((open) => !open); setEditingLeaseDocument(null); }}>
-                          {leaseClauseEditorOpen ? 'Close Word-style editor' : 'Edit lease text (Word-style)'}
-                        </button>
-                      </div>
-                    ) : null}
-                    {['admin', 'manager'].includes(role) && leaseClauseEditorOpen ? (
-                      <LeaseClauseEditor
-                        lease={selectedLeaseForDocuments}
-                        requestJson={requestJson}
-                        requestDownload={requestDocumentDownload}
-                        onClose={() => setLeaseClauseEditorOpen(false)}
-                        onSaved={async (result) => {
-                          setLeaseClauseEditorOpen(false);
-                          setInfoMessage(result.message || 'Editable Word lease draft exported and saved separately.');
-                          try {
-                            await refreshLeaseDocuments(selectedLeaseForDocuments.id);
-                          } catch {
-                            setLeaseDocumentsError('The corrected draft was saved, but the document list could not be refreshed. Close and reopen this lease to reload it.');
-                          }
-                        }}
-                      />
-                    ) : null}
                     {['admin', 'manager'].includes(role) && editingLeaseDocument ? (
                       <LeaseDocumentEditor
                         lease={selectedLeaseForDocuments}
@@ -4876,7 +4848,7 @@ const handleLogin = async (event) => {
                                 <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, false)}>Open / Print</button>
                                 <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, true)}>Download PDF</button>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
-                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                  <button className="small-btn" type="button" onClick={() => { setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
                                 {['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn danger-btn" type="button" disabled={leaseDocumentsLoading} onClick={() => deleteLeaseDocument(document)}>Delete file</button>
@@ -4900,7 +4872,7 @@ const handleLogin = async (event) => {
                                 {document.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, false)}>Open / Print</button> : null}
                                 <button className="small-btn" type="button" onClick={() => openLeaseDocumentFile(document, true)}>{document.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'Download Word' : 'Download'}</button>
                                 {document.mimeType === 'application/pdf' && ['admin', 'manager'].includes(role) ? (
-                                  <button className="small-btn" type="button" onClick={() => { setLeaseClauseEditorOpen(false); setEditingLeaseDocument(document); }}>Edit PDF</button>
+                                  <button className="small-btn" type="button" onClick={() => { setEditingLeaseDocument(document); }}>Edit PDF</button>
                                 ) : null}
                                 {['admin', 'manager'].includes(role) ? (
                                   <button className="small-btn danger-btn" type="button" disabled={leaseDocumentsLoading} onClick={() => deleteLeaseDocument(document)}>Delete file</button>
