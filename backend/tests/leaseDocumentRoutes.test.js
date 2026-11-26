@@ -274,6 +274,59 @@ const request = (path, { token, method = 'GET', body, form } = {}) => {
 
 const validPdf = Buffer.from('%PDF-1.4\nRiiroow lease test document\n');
 
+const makeDocxFixture = () => {
+  const entries = [
+    ['[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>'],
+    ['word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>'],
+  ];
+  const crc32 = (buffer) => {
+    let crc = 0xffffffff;
+    for (const byte of buffer) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const locals = [];
+  const centrals = [];
+  let localOffset = 0;
+  for (const [name, value] of entries) {
+    const nameBytes = Buffer.from(name);
+    const data = Buffer.from(value);
+    const compressed = deflateRawSync(data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    locals.push(local, nameBytes, compressed);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(localOffset, 42);
+    centrals.push(central, nameBytes);
+    localOffset += local.length + nameBytes.length + compressed.length;
+  }
+  const centralBytes = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralBytes.length, 12);
+  end.writeUInt32LE(localOffset, 16);
+  return Buffer.concat([...locals, centralBytes, end]);
+};
+
 const uploadForm = (buffer = validPdf, {
   filename = 'lease.pdf',
   mimeType = 'application/pdf',
