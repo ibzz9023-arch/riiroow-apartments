@@ -4816,6 +4816,7 @@ const handleLogin = async (event) => {
                         document={editingLeaseDocument}
                         requestJson={requestJson}
                         requestPdf={requestPdf}
+                        requestDocumentDownload={requestDocumentDownload}
                         onClose={() => setEditingLeaseDocument(null)}
                         onSaved={async (result) => {
                           setEditingLeaseDocument(null);
