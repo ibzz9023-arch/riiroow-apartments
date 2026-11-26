@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 const todayInReportingZone = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -42,6 +42,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
   const [trendData, setTrendData] = useState([]);
   const [trendLoading, setTrendLoading] = useState(false);
   const [trendError, setTrendError] = useState('');
+  const trendRequestId = useRef(0);
   const [summary, setSummary] = useState(null);
   const [receipts, setReceipts] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -141,6 +142,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
     setTrendLoading(true);
     setError('');
     setTrendError('');
+    const currentTrendRequestId = ++trendRequestId.current;
     try {
       const monthQuery = encodeURIComponent(month);
       const trendMonths = Array.from(
@@ -153,6 +155,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
         )
       )
         .then((monthlySummaries) => {
+          if (currentTrendRequestId !== trendRequestId.current) return;
           setTrendData(monthlySummaries.map((monthlySummary, index) => ({
             month: trendMonths[index],
             label: new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
@@ -162,6 +165,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
           })));
         })
         .catch((trendRequestError) => {
+          if (currentTrendRequestId !== trendRequestId.current) return;
           setTrendError(trendRequestError.message || 'Unable to load monthly profit and expense trends.');
           setTrendData([]);
         });
@@ -202,7 +206,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
       setError(requestError.message || 'Unable to load financial records.');
     } finally {
       setLoading(false);
-      setTrendLoading(false);
+      if (currentTrendRequestId === trendRequestId.current) setTrendLoading(false);
     }
   };
 
