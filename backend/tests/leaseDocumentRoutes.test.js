@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { deflateRawSync } from 'node:zlib';
 import test, { mock } from 'node:test';
 
 const secret = crypto.randomBytes(32);
@@ -334,6 +335,33 @@ test('Manager can upload a valid PDF to private storage with lease metadata', as
   assert.equal(document.created_by, managerId);
   assert.ok(document.storage_path.startsWith(`${leaseId}/`));
   assert.ok(!document.storage_path.includes('signed-lease.pdf'));
+});
+
+test('Manager can upload a valid Word document to private storage with lease metadata', async () => {
+  const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const response = await request(`/api/leases/${leaseId}/documents`, {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    form: uploadForm(makeDocxFixture(), { filename: 'revised-signed-lease.docx', mimeType: docxMime }),
+  });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { success: true, uploaded: 1 });
+  assert.equal(state.documents[0].original_name, 'revised-signed-lease.docx');
+  assert.equal(state.documents[0].mime_type, docxMime);
+  assert.ok(state.documents[0].storage_path.endsWith('.docx'));
+  assert.equal(state.objects.size, 1);
+});
+
+test('upload rejects a ZIP file that is not a valid Word document', async () => {
+  const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const response = await request(`/api/leases/${leaseId}/documents`, {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    form: uploadForm(Buffer.from('PK fake docx test bytes'), { filename: 'fake.docx', mimeType: docxMime }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(state.documents.length, 0);
+  assert.equal(state.objects.size, 0);
 });
 
 test('upload rejects a file whose content does not match its claimed MIME type', async () => {
