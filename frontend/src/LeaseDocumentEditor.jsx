@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 const emptyText = { page: '1', x: '55', y: '700', fontSize: '12', coverWidth: '220', coverHeight: '40', text: '', cover: true };
 const emptyImage = { page: '1', x: '55', y: '600', width: '120', height: '60' };
 
-export default function LeaseDocumentEditor({ lease, document, requestJson, requestPdf, onClose, onSaved }) {
+export default function LeaseDocumentEditor({ lease, document, requestJson, requestPdf, requestDocumentDownload, onClose, onSaved }) {
+  const [originalPreviewUrl, setOriginalPreviewUrl] = useState('');
+  const [originalPreviewError, setOriginalPreviewError] = useState('');
   const [textDraft, setTextDraft] = useState(emptyText);
   const [imageDraft, setImageDraft] = useState(emptyImage);
   const [imageDataUrl, setImageDataUrl] = useState('');
@@ -17,6 +19,32 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
   const [previewFingerprint, setPreviewFingerprint] = useState('');
   const [error, setError] = useState('');
   const isSignedSource = document.documentType === 'signed_lease' || String(document.originalName || '').includes('EDITED_COPY_NOT_EXECUTED');
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    setOriginalPreviewUrl('');
+    setOriginalPreviewError('');
+
+    const loadOriginalPdf = async () => {
+      try {
+        const blob = await requestDocumentDownload(document.previewUrl);
+        if (!(blob instanceof Blob) || !blob.size || !blob.type.includes('pdf')) {
+          throw new Error('The server did not return a valid PDF preview.');
+        }
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setOriginalPreviewUrl(objectUrl);
+      } catch (loadError) {
+        if (active) setOriginalPreviewError(loadError.message || 'Unable to load the original PDF preview.');
+      }
+    };
+
+    loadOriginalPdf();
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [document.id, document.previewUrl]);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
@@ -153,7 +181,11 @@ export default function LeaseDocumentEditor({ lease, document, requestJson, requ
       </div>
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       <div className="lease-editor-preview">
-        <iframe title={previewUrl ? "Corrected PDF preview" : "Original PDF preview"} src={previewUrl || document.previewUrl} />
+        {originalPreviewError && !previewUrl ? <p className="error-text" role="alert">{originalPreviewError}</p> : null}
+        {!previewUrl && !originalPreviewUrl && !originalPreviewError ? <p className="muted">Loading original PDF preview…</p> : null}
+        {(previewUrl || originalPreviewUrl) ? (
+          <iframe title={previewUrl ? "Corrected PDF preview" : "Original PDF preview"} src={previewUrl || originalPreviewUrl} />
+        ) : null}
       </div>
       <p className="muted">Coordinates are PDF points measured from the bottom-left corner of the selected page. Use the PDF preview above to identify the page and approximate position.</p>
       <div className="panel">
