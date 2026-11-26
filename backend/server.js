@@ -1169,6 +1169,7 @@ app.post(
           'application/pdf': ['pdf'],
           'image/jpeg': ['jpg', 'jpeg'],
           'image/png': ['png'],
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],
         };
         if (!allowedExtensions[detected.mimeType]?.includes(originalExtension)) {
           throw Object.assign(
