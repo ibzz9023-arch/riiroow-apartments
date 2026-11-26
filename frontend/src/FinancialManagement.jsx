@@ -208,7 +208,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
 
   useEffect(() => {
     void refresh();
-  }, [month]);
+  }, [month, trendYear]);
 
   useEffect(() => {
     if (!expenseForm.propertyId && properties.length > 0) {
