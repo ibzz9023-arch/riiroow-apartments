@@ -498,3 +498,19 @@ test('financial routes allow read-only Accountant access and restrict writes', (
   ]);
   assert.ok(router.stack.length > 1);
 });
+
+
+test('frontend renders a year-filtered monthly net profit and paid-expense comparison chart', () => {
+  const source = readFileSync(
+    new URL('../../frontend/src/FinancialManagement.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /Monthly profit &amp; expense trends/);
+  assert.match(source, /financial-trend-chart/);
+  assert.match(source, /financial-trend-line-profit/);
+  assert.match(source, /financial-trend-line-expenses/);
+  assert.match(source, /trendYear/);
+  assert.match(source, /length: 12/);
+  assert.match(source, /monthlySummary\?\.netProfit/);
+  assert.match(source, /monthlySummary\?\.paidExpenses/);
+});
