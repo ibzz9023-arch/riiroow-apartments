@@ -38,6 +38,10 @@ const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Mobile Money', 'Other'];
 
 export default function FinancialManagement({ requestJson, canWrite, dashboard }) {
   const [month, setMonth] = useState(currentReportingMonth);
+  const [trendYear, setTrendYear] = useState(() => Number(currentReportingMonth().slice(0, 4)));
+  const [trendData, setTrendData] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState('');
   const [summary, setSummary] = useState(null);
   const [receipts, setReceipts] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -134,9 +138,34 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
 
   const refresh = async () => {
     setLoading(true);
+    setTrendLoading(true);
     setError('');
+    setTrendError('');
     try {
       const monthQuery = encodeURIComponent(month);
+      const trendMonths = Array.from(
+        { length: 12 },
+        (_, index) => `${trendYear}-${String(index + 1).padStart(2, '0')}`
+      );
+      const trendRequest = Promise.all(
+        trendMonths.map((period) =>
+          requestJson(`/api/financial/summary?month=${encodeURIComponent(period)}`)
+        )
+      )
+        .then((monthlySummaries) => {
+          setTrendData(monthlySummaries.map((monthlySummary, index) => ({
+            month: trendMonths[index],
+            label: new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+              .format(new Date(Date.UTC(trendYear, index, 1))),
+            profit: Number(monthlySummary?.netProfit || 0),
+            expenses: Number(monthlySummary?.paidExpenses || 0),
+          })));
+        })
+        .catch((trendRequestError) => {
+          setTrendError(trendRequestError.message || 'Unable to load monthly profit and expense trends.');
+          setTrendData([]);
+        });
+
       const requests = [
         requestJson(`/api/financial/summary?month=${monthQuery}`),
         requestJson(`/api/financial/receipts?month=${monthQuery}`),
@@ -159,6 +188,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
         nextAuditLogs,
         nextNotifications = [],
       ] = await Promise.all(requests);
+      await trendRequest;
       setSummary(nextSummary);
       setReceipts(Array.isArray(nextReceipts) ? nextReceipts : []);
       setExpenses(Array.isArray(nextExpenses) ? nextExpenses : []);
@@ -172,6 +202,7 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
       setError(requestError.message || 'Unable to load financial records.');
     } finally {
       setLoading(false);
+      setTrendLoading(false);
     }
   };
 
@@ -624,6 +655,35 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
             </div>
           </div>
         )}
+      </section>
+
+      <section className="panel financial-trend-panel">
+        <div className="panel-header financial-trend-header">
+          <div>
+            <h3>Monthly profit &amp; expense trends</h3>
+            <p className="muted">
+              Compare recognized net profit with expenses actually paid, month by month.
+            </p>
+          </div>
+          <label className="financial-filter">
+            Reporting year
+            <select
+              value={trendYear}
+              onChange={(event) => setTrendYear(Number(event.target.value))}
+            >
+              {Array.from({ length: 10 }, (_, index) => Number(currentReportingMonth().slice(0, 4)) - index)
+                .map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
+        </div>
+        {trendError ? <p className="error-text" role="alert">{trendError}</p> : null}
+        {trendLoading ? <p className="muted">Loading monthly financial trends...</p> : null}
+        {!trendLoading && !trendError && !trendData.some((entry) => entry.profit !== 0 || entry.expenses !== 0) ? (
+          <p className="muted">No recognized rent income or paid expenses have been recorded for {trendYear}.</p>
+        ) : null}
+        {!trendLoading && !trendError && trendData.some((entry) => entry.profit !== 0 || entry.expenses !== 0) ? (
+          <FinancialTrendChart data={trendData} year={trendYear} />
+        ) : null}
       </section>
 
       {canWrite ? (
@@ -1272,6 +1332,84 @@ export default function FinancialManagement({ requestJson, canWrite, dashboard }
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+function FinancialTrendChart({ data, year }) {
+  const width = 760;
+  const height = 310;
+  const padding = { top: 20, right: 20, bottom: 48, left: 76 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const values = data.flatMap((entry) => [Number(entry.profit || 0), Number(entry.expenses || 0)]);
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(0, ...values);
+  const range = maximum - minimum || 1;
+  const xFor = (index) => padding.left + (data.length > 1 ? (index / (data.length - 1)) * plotWidth : plotWidth / 2);
+  const yFor = (value) => padding.top + ((maximum - value) / range) * plotHeight;
+  const ticks = Array.from({ length: 5 }, (_, index) => maximum - (range * index) / 4);
+  const profitPoints = data.map((entry, index) => `${xFor(index)},${yFor(entry.profit)}`).join(' ');
+  const expensePoints = data.map((entry, index) => `${xFor(index)},${yFor(entry.expenses)}`).join(' ');
+  const formatAxisValue = (value) => {
+    const absolute = Math.abs(value);
+    const compact = absolute >= 1000000
+      ? `${(absolute / 1000000).toFixed(1)}m`
+      : absolute >= 1000
+        ? `${(absolute / 1000).toFixed(1)}k`
+        : Math.round(absolute).toString();
+    return `${value < 0 ? '-' : ''}$${compact}`;
+  };
+
+  return (
+    <div className="financial-trend-chart">
+      <div className="financial-trend-legend" aria-label="Chart legend">
+        <span><i className="financial-trend-swatch financial-trend-profit" />Net profit</span>
+        <span><i className="financial-trend-swatch financial-trend-expenses" />Paid expenses</span>
+      </div>
+      <div className="financial-trend-scroll">
+        <svg
+          className="financial-trend-svg"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`Monthly net profit compared with paid expenses for ${year}`}
+        >
+          <title>Monthly net profit and paid expenses for {year}</title>
+          <desc>Two line series compare recognized rent income less paid expenses against paid expenses for each month.</desc>
+          {ticks.map((tick, index) => {
+            const y = yFor(tick);
+            return (
+              <g key={index}>
+                <line
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                  className="financial-trend-gridline"
+                />
+                <text x={padding.left - 10} y={y + 4} textAnchor="end" className="financial-trend-axis-label">
+                  {formatAxisValue(tick)}
+                </text>
+              </g>
+            );
+          })}
+          <polyline points={expensePoints} className="financial-trend-line financial-trend-line-expenses" />
+          <polyline points={profitPoints} className="financial-trend-line financial-trend-line-profit" />
+          {data.map((entry, index) => (
+            <g key={entry.month}>
+              <circle cx={xFor(index)} cy={yFor(entry.expenses)} r="4" className="financial-trend-point financial-trend-point-expenses">
+                <title>{entry.label}: paid expenses {formatMoney(entry.expenses)}</title>
+              </circle>
+              <circle cx={xFor(index)} cy={yFor(entry.profit)} r="4" className="financial-trend-point financial-trend-point-profit">
+                <title>{entry.label}: net profit {formatMoney(entry.profit)}</title>
+              </circle>
+              <text x={xFor(index)} y={height - 18} textAnchor="middle" className="financial-trend-axis-label">
+                {entry.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }
