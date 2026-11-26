@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import multer from 'multer';
+import { inflateRawSync } from 'node:zlib';
 import {
   generateTenantPin,
   verifyTenantPin,
@@ -185,6 +186,7 @@ const LEASE_DOCUMENT_MIME_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
   'image/png',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 const validUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -200,7 +202,7 @@ const leaseDocumentsMultipart = multer({
     const mimeType = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
     if (!LEASE_DOCUMENT_MIME_TYPES.has(mimeType)) {
       return callback(Object.assign(
-        new Error('Only PDF, JPG, and PNG lease documents are allowed.'),
+        new Error('Only PDF, JPG, PNG, and Word (.docx) lease documents are allowed.'),
         { statusCode: 400 }
       ));
     }
@@ -222,6 +224,64 @@ const parseLeaseDocumentsMultipart = (req, res, next) => {
   });
 };
 
+const isValidLeaseDocx = (buffer) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 22 || buffer.readUInt32LE(0) !== 0x04034b50) return false;
+  try {
+    const minimumEocd = Math.max(0, buffer.length - 22 - 0xffff);
+    let eocd = -1;
+    for (let offset = buffer.length - 22; offset >= minimumEocd; offset -= 1) {
+      if (buffer.readUInt32LE(offset) === 0x06054b50) {
+        const commentLength = buffer.readUInt16LE(offset + 20);
+        if (offset + 22 + commentLength === buffer.length) { eocd = offset; break; }
+      }
+    }
+    if (eocd < 0 || buffer.readUInt16LE(eocd + 4) !== 0 || buffer.readUInt16LE(eocd + 6) !== 0) return false;
+    const entryCount = buffer.readUInt16LE(eocd + 10);
+    const centralSize = buffer.readUInt32LE(eocd + 12);
+    const centralOffset = buffer.readUInt32LE(eocd + 16);
+    if (entryCount < 2 || entryCount > 2000 || centralOffset + centralSize > eocd) return false;
+
+    const required = new Map([['[Content_Types].xml', false], ['word/document.xml', false]]);
+    let offset = centralOffset;
+    let totalExpanded = 0;
+    for (let index = 0; index < entryCount; index += 1) {
+      if (offset + 46 > eocd || buffer.readUInt32LE(offset) !== 0x02014b50) return false;
+      const flags = buffer.readUInt16LE(offset + 8);
+      const method = buffer.readUInt16LE(offset + 10);
+      const compressedSize = buffer.readUInt32LE(offset + 20);
+      const expandedSize = buffer.readUInt32LE(offset + 24);
+      const nameLength = buffer.readUInt16LE(offset + 28);
+      const extraLength = buffer.readUInt16LE(offset + 30);
+      const commentLength = buffer.readUInt16LE(offset + 32);
+      const localOffset = buffer.readUInt32LE(offset + 42);
+      const nameEnd = offset + 46 + nameLength;
+      const nextEntry = nameEnd + extraLength + commentLength;
+      if (nextEntry > eocd || (flags & 1) || ![0, 8].includes(method)) return false;
+      const name = buffer.toString('utf8', offset + 46, nameEnd);
+      if (required.has(name)) {
+        if (expandedSize > 10 * 1024 * 1024 || totalExpanded + expandedSize > 20 * 1024 * 1024) return false;
+        if (localOffset + 30 > centralOffset || buffer.readUInt32LE(localOffset) !== 0x04034b50) return false;
+        const localNameLength = buffer.readUInt16LE(localOffset + 26);
+        const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+        const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+        if (dataOffset + compressedSize > centralOffset) return false;
+        const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize);
+        const expanded = method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: 10 * 1024 * 1024 });
+        if (expanded.length !== expandedSize) return false;
+        const xml = expanded.toString('utf8');
+        if (name === '[Content_Types].xml' && !/<Types(?:\s|>)/.test(xml)) return false;
+        if (name === 'word/document.xml' && !/<(?:\w+:)?document(?:\s|>)/.test(xml)) return false;
+        required.set(name, true);
+        totalExpanded += expandedSize;
+      }
+      offset = nextEntry;
+    }
+    return offset === centralOffset + centralSize && [...required.values()].every(Boolean);
+  } catch {
+    return false;
+  }
+};
+
 const detectLeaseDocumentFormat = (buffer) => {
   if (buffer?.length >= 5 && buffer.toString('ascii', 0, 5) === '%PDF-') {
     return { mimeType: 'application/pdf', extension: 'pdf' };
@@ -234,6 +294,9 @@ const detectLeaseDocumentFormat = (buffer) => {
     buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
   ) {
     return { mimeType: 'image/png', extension: 'png' };
+  }
+  if (isValidLeaseDocx(buffer)) {
+    return { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' };
   }
   return null;
 };
@@ -1083,7 +1146,7 @@ app.post(
     try {
       if (!requireLeaseDocumentStorage(res)) return;
       if (!Array.isArray(req.files) || !req.files.length) {
-        return res.status(400).json({ error: 'Choose at least one PDF, JPG, or PNG document.' });
+        return res.status(400).json({ error: 'Choose at least one PDF, JPG, PNG, or Word (.docx) document.' });
       }
 
       const lease = await findLeaseDocumentLease(req.params.id);
@@ -1094,7 +1157,7 @@ app.post(
         const claimedMime = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
         if (!detected || detected.mimeType !== claimedMime) {
           throw Object.assign(
-            new Error('One or more files do not match their actual PDF, JPG, or PNG content.'),
+            new Error('One or more files do not match their actual PDF, JPG, PNG, or valid Word (.docx) content.'),
             { statusCode: 400 }
           );
         }
@@ -1106,6 +1169,7 @@ app.post(
           'application/pdf': ['pdf'],
           'image/jpeg': ['jpg', 'jpeg'],
           'image/png': ['png'],
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],
         };
         if (!allowedExtensions[detected.mimeType]?.includes(originalExtension)) {
           throw Object.assign(

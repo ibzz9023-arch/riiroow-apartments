@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { deflateRawSync } from 'node:zlib';
 import test, { mock } from 'node:test';
 
 const secret = crypto.randomBytes(32);
@@ -273,6 +274,59 @@ const request = (path, { token, method = 'GET', body, form } = {}) => {
 
 const validPdf = Buffer.from('%PDF-1.4\nRiiroow lease test document\n');
 
+const makeDocxFixture = () => {
+  const entries = [
+    ['[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>'],
+    ['word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>'],
+  ];
+  const crc32 = (buffer) => {
+    let crc = 0xffffffff;
+    for (const byte of buffer) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const locals = [];
+  const centrals = [];
+  let localOffset = 0;
+  for (const [name, value] of entries) {
+    const nameBytes = Buffer.from(name);
+    const data = Buffer.from(value);
+    const compressed = deflateRawSync(data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    locals.push(local, nameBytes, compressed);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(localOffset, 42);
+    centrals.push(central, nameBytes);
+    localOffset += local.length + nameBytes.length + compressed.length;
+  }
+  const centralBytes = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralBytes.length, 12);
+  end.writeUInt32LE(localOffset, 16);
+  return Buffer.concat([...locals, centralBytes, end]);
+};
+
 const uploadForm = (buffer = validPdf, {
   filename = 'lease.pdf',
   mimeType = 'application/pdf',
@@ -334,6 +388,33 @@ test('Manager can upload a valid PDF to private storage with lease metadata', as
   assert.equal(document.created_by, managerId);
   assert.ok(document.storage_path.startsWith(`${leaseId}/`));
   assert.ok(!document.storage_path.includes('signed-lease.pdf'));
+});
+
+test('Manager can upload a valid Word document to private storage with lease metadata', async () => {
+  const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const response = await request(`/api/leases/${leaseId}/documents`, {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    form: uploadForm(makeDocxFixture(), { filename: 'revised-signed-lease.docx', mimeType: docxMime }),
+  });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { success: true, uploaded: 1 });
+  assert.equal(state.documents[0].original_name, 'revised-signed-lease.docx');
+  assert.equal(state.documents[0].mime_type, docxMime);
+  assert.ok(state.documents[0].storage_path.endsWith('.docx'));
+  assert.equal(state.objects.size, 1);
+});
+
+test('upload rejects a ZIP file that is not a valid Word document', async () => {
+  const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const response = await request(`/api/leases/${leaseId}/documents`, {
+    method: 'POST',
+    token: tokenFor(managerId, 'Manager'),
+    form: uploadForm(Buffer.from('PK fake docx test bytes'), { filename: 'fake.docx', mimeType: docxMime }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(state.documents.length, 0);
+  assert.equal(state.objects.size, 0);
 });
 
 test('upload rejects a file whose content does not match its claimed MIME type', async () => {

@@ -4833,10 +4833,10 @@ const handleLogin = async (event) => {
                     {['admin', 'manager'].includes(role) ? (
                       <form className="crud-form" onSubmit={handleLeaseDocumentsUpload}>
                         <label>
-                          Add scanned documents (PDF, JPG, PNG; maximum 10 MB each, up to five files)
+                          Add lease documents (PDF, JPG, PNG, Word .docx; maximum 10 MB each, up to five files)
                           <input
                             type="file"
-                            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                            accept=".pdf,.jpg,.jpeg,.png,.docx,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             multiple
                             onChange={(event) => setLeaseDocumentFiles(Array.from(event.target.files || []))}
                           />
@@ -4911,7 +4911,7 @@ const handleLogin = async (event) => {
                         </>
                       ) : null}
                       {!leaseDocumentsLoading && !leaseDocumentsError && !leaseDocuments.length ? (
-                        <EmptyState title="No lease documents" message="The signed lease and manually uploaded supporting documents will appear here." />
+                        <EmptyState title="No lease documents" message="The signed lease, revised Word documents, and manually uploaded supporting documents will appear here." />
                       ) : null}
                     </div>
 
