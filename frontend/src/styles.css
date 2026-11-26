@@ -1471,3 +1471,126 @@ tbody tr:hover {
     flex-direction: column;
   }
 }
+
+
+/* Monthly profit and paid-expense trend chart */
+.financial-trend-panel {
+  min-width: 0;
+}
+
+.financial-trend-header {
+  align-items: flex-end;
+}
+
+.financial-trend-header .financial-filter {
+  min-width: 140px;
+}
+
+.financial-trend-header .financial-filter select {
+  min-width: 120px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+}
+
+.financial-trend-chart {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.financial-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.financial-trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.financial-trend-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
+}
+
+.financial-trend-profit {
+  background: #16805c;
+}
+
+.financial-trend-expenses {
+  background: #c85d5d;
+}
+
+.financial-trend-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.financial-trend-svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+  overflow: visible;
+}
+
+.financial-trend-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.financial-trend-axis-label {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.financial-trend-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.financial-trend-line-profit {
+  stroke: #16805c;
+}
+
+.financial-trend-line-expenses {
+  stroke: #c85d5d;
+}
+
+.financial-trend-point {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.financial-trend-point-profit {
+  fill: #16805c;
+}
+
+.financial-trend-point-expenses {
+  fill: #c85d5d;
+}
+
+@media (max-width: 640px) {
+  .financial-trend-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .financial-trend-header .financial-filter,
+  .financial-trend-header .financial-filter select {
+    width: 100%;
+  }
+}
