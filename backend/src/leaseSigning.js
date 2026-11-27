@@ -163,6 +163,35 @@ const drawDetailsGrid = (doc, fields, y) => {
   return y + Math.ceil(fields.length / 2) * LAYOUT.detailRowHeight;
 };
 
+
+const drawRiiroowCompanyStamp = (doc, logo, x, y, size = 72) => {
+  const centerX = x + size / 2;
+  const centerY = y + size / 2;
+  const blue = '#2457a6';
+
+  doc.save();
+  doc.circle(centerX, centerY, size / 2 - 2).clip();
+  doc.image(logo, x + 10, y + 18, {
+    fit: [size - 20, size - 36],
+    align: 'center',
+    valign: 'center',
+  });
+  doc.restore();
+
+  doc.circle(centerX, centerY, size / 2 - 1)
+    .lineWidth(1.8).strokeColor(blue).stroke();
+  doc.circle(centerX, centerY, size / 2 - 5)
+    .lineWidth(0.7).strokeColor(blue).stroke();
+  doc.font('Helvetica-Bold').fontSize(5.8).fillColor(blue)
+    .text('RIIROOW APARTMENTS', x + 3, y + 6, {
+      width: size - 6, align: 'center', lineBreak: false,
+    });
+  doc.font('Helvetica-Bold').fontSize(5.2).fillColor(blue)
+    .text('OFFICIAL MANAGEMENT', x + 3, y + size - 12, {
+      width: size - 6, align: 'center', lineBreak: false,
+    });
+};
+
 const drawSignatureBlock = (doc, {
   y,
   tenantSignature,
@@ -171,13 +200,14 @@ const drawSignatureBlock = (doc, {
   tenantSignedAt,
   managerSignedAt,
   managerName,
+  companyLogo,
 }) => {
   const gap = LAYOUT.signatureGap;
   const columnWidth = (LAYOUT.contentWidth - gap) / 2;
   const leftX = PAGE.margin;
   const rightX = leftX + columnWidth + gap;
   const top = y + 41.25; // signatures margin-top: 55px
-  const blockBottom = top + LAYOUT.signatureHeight;
+  const blockBottom = top + 160;
 
   [leftX, rightX].forEach((x) => {
     doc.moveTo(x, top).lineTo(x + columnWidth, top)
@@ -222,6 +252,14 @@ const drawSignatureBlock = (doc, {
       width: columnWidth,
       lineBreak: false,
     });
+  // Stamp newly generated signed lease PDFs; archived PDFs are untouched.
+  drawRiiroowCompanyStamp(
+    doc,
+    companyLogo,
+    rightX + columnWidth - 74,
+    top + 82,
+    70,
+  );
   return blockBottom;
 };
 
@@ -383,9 +421,10 @@ export const createSignedLeasePdf = ({
     }
 
     // Keep both signature blocks together, after all agreement clauses.
-    y = addPageIfNeeded(doc, y, 41.25 + LAYOUT.signatureHeight + 12);
+    y = addPageIfNeeded(doc, y, 41.25 + 160 + 12);
     y = drawSignatureBlock(doc, {
       y,
+      companyLogo: logo,
       tenantSignature,
       managerSignature,
       tenantName: tenantName || snapshot.tenant_name,
