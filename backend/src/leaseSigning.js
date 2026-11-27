@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import PDFDocument from 'pdfkit';
+import { readFileSync } from 'node:fs';
 
 export const SIGNATURE_PNG_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -88,6 +89,38 @@ const addField = (doc, label, value) => {
   doc.moveDown(0.7);
 };
 
+const drawRiiroowCompanyStamp = (doc, logo, x, y, size = 76) => {
+  const centerX = x + size / 2;
+  const centerY = y + size / 2;
+  const blue = '#2457a6';
+
+  doc.save();
+  doc.circle(centerX, centerY, size / 2 - 2).clip();
+  doc.image(logo, x + 10, y + 18, {
+    fit: [size - 20, size - 36],
+    align: 'center',
+    valign: 'center',
+  });
+  doc.restore();
+
+  doc.circle(centerX, centerY, size / 2 - 1)
+    .lineWidth(1.8).strokeColor(blue).stroke();
+  doc.circle(centerX, centerY, size / 2 - 5)
+    .lineWidth(0.7).strokeColor(blue).stroke();
+  doc.font('Helvetica-Bold').fontSize(6.2).fillColor(blue)
+    .text('RIIROOW APARTMENTS', x + 4, y + 6, {
+      width: size - 8,
+      align: 'center',
+      lineBreak: false,
+    });
+  doc.font('Helvetica-Bold').fontSize(5.8).fillColor(blue)
+    .text('OFFICIAL MANAGEMENT', x + 4, y + size - 13, {
+      width: size - 8,
+      align: 'center',
+      lineBreak: false,
+    });
+};
+
 export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignature, tenantSignedAt, managerSignedAt, tenantName, managerName, sessionId, qrBuffer, tenantPhoto }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: { top: 52, bottom: 52, left: 54, right: 54 }, bufferPages: true, info: {
@@ -143,7 +176,19 @@ export const createSignedLeasePdf = ({ snapshot, tenantSignature, managerSignatu
 
     doc.moveTo(leftX, signatureY + 158).lineTo(leftX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
     doc.moveTo(rightX, signatureY + 158).lineTo(rightX + signatureWidth, signatureY + 158).strokeColor('#999999').stroke();
-    doc.moveDown(2);
+
+    // The company stamp is part of newly generated signed PDFs only. Existing
+    // archived signed documents are never reopened or modified by this flow.
+    const companyLogo = readFileSync(new URL('../../frontend/public/riiroow-logo.png', import.meta.url));
+    drawRiiroowCompanyStamp(
+      doc,
+      companyLogo,
+      rightX + signatureWidth - 78,
+      signatureY + 166,
+      76,
+    );
+    doc.y = signatureY + 250;
+    doc.moveDown(0.5);
     doc.font('Helvetica').fontSize(8).fillColor('#777777')
       .text(`Signing record: ${sessionId}`, { align: 'left' });
     doc.text('Each signing date above is recorded independently by the Riiroow server and displayed in East Africa Time (EAT).');
