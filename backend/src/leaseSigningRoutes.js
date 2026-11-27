@@ -330,6 +330,50 @@ tenantLeaseSigningRouter.get('/:unitNumber/lease-signing', requireTenantQrSessio
   }
 });
 
+tenantLeaseSigningRouter.get('/:unitNumber/lease-signing/:sessionId/final-document', requireTenantQrSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!supabaseServiceRole) {
+      return res.status(503).json({ error: 'Private lease document storage is not configured.' });
+    }
+    const current = await getTenantSigningLease(req);
+    if (!current || !UUID.test(String(req.params.sessionId || ''))) {
+      return res.status(404).json({ error: 'Signed lease document not found.' });
+    }
+    const session = await getSession(current.lease.id, req.params.sessionId);
+    if (!session || session.status !== 'signed' || !session.final_document_id) {
+      return res.status(404).json({ error: 'Signed lease document not found.' });
+    }
+    const { data: document, error: documentError } = await supabaseServiceRole
+      .from('lease_documents')
+      .select('id, storage_path, mime_type')
+      .eq('id', session.final_document_id)
+      .eq('lease_id', current.lease.id)
+      .eq('document_type', 'signed_lease')
+      .maybeSingle();
+    if (documentError) throw documentError;
+    if (!document || document.mime_type !== 'application/pdf' || !document.storage_path) {
+      return res.status(404).json({ error: 'Signed lease PDF is not available.' });
+    }
+    const download = req.query.download === '1';
+    const { data: signedFile, error: signedFileError } = await supabaseServiceRole.storage
+      .from(BUCKET)
+      .createSignedUrl(
+        document.storage_path,
+        60,
+        download ? { download: 'Signed_Lease_Agreement.pdf' } : undefined
+      );
+    if (signedFileError) throw signedFileError;
+    return res.json({
+      url: signedFile.signedUrl,
+      expiresIn: 60,
+      fileName: 'Signed_Lease_Agreement.pdf',
+    });
+  } catch (error) {
+    return sendError(res, error, 'Unable to prepare the signed lease document.');
+  }
+});
+
 tenantLeaseSigningRouter.post('/:unitNumber/lease-signing/:sessionId/signature', requireTenantQrSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   let uploadedPath = '';

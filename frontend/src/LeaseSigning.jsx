@@ -9,6 +9,7 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
   const [tenantLease, setTenantLease] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [documentLoading, setDocumentLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [confirmed, setConfirmed] = useState(false);
@@ -69,6 +70,32 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
       setError(refreshError.message || 'Unable to refresh signing status.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openSignedLease = async (download = false) => {
+    if (!session?.id || !isTenantFlow) return;
+    const newWindow = window.open('about:blank', '_blank');
+    setDocumentLoading(true);
+    setError('');
+    try {
+      const endpoint = `/api/public/qr/${encodeURIComponent(unitNumber)}/lease-signing/${encodeURIComponent(session.id)}/final-document${download ? '?download=1' : ''}`;
+      const data = await requestJson(endpoint, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tenantAccessToken}` },
+      });
+      if (!data.url) throw new Error('The signed lease link was not returned.');
+      if (newWindow) {
+        newWindow.opener = null;
+        newWindow.location.href = data.url;
+      } else {
+        throw new Error('Please allow pop-ups to open or download your signed lease.');
+      }
+    } catch (documentError) {
+      newWindow?.close();
+      setError(documentError.message || 'Unable to open the signed lease PDF.');
+    } finally {
+      setDocumentLoading(false);
     }
   };
 
@@ -260,7 +287,17 @@ export default function LeaseSigning({ lease, requestJson, onCompleted, tenantAc
       {!loading && session?.status === 'signed' ? (
         <div className="empty-state" role="status">
           <h4>Lease signed and archived</h4>
-          <p>Both signatures have been saved. The final PDF is available in this lease’s Documents list and through its QR code.</p>
+          <p>Both signatures have been saved. You can now view or download your signed lease below.</p>
+          {isTenantFlow ? (
+            <div className="form-actions">
+              <button className="small-btn" type="button" onClick={() => openSignedLease(false)} disabled={documentLoading}>
+                {documentLoading ? 'Preparing PDF…' : 'View Signed Lease'}
+              </button>
+              <button className="small-btn" type="button" onClick={() => openSignedLease(true)} disabled={documentLoading}>
+                {documentLoading ? 'Preparing PDF…' : 'Download Signed Lease'}
+              </button>
+            </div>
+          ) : null}
           <p className="muted">Tenant: {session.tenantSignedAt ? new Date(session.tenantSignedAt).toLocaleString() : '—'}</p>
           <p className="muted">Manager: {session.managerSignedAt ? new Date(session.managerSignedAt).toLocaleString() : '—'}</p>
           {!isTenantFlow && session.canRegeneratePdf ? (
