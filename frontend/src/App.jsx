@@ -2756,48 +2756,6 @@ const handleLogin = async (event) => {
       font-size: 11px;
     }
 
-    .signature.authorized-signature {
-      position: relative;
-      padding-right: 112px;
-    }
-
-    .company-stamp {
-      position: absolute;
-      right: 0;
-      bottom: -10px;
-      width: 102px;
-      height: 102px;
-      border: 2px solid #2457a6;
-      border-radius: 50%;
-      color: #2457a6;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      font-family: Georgia, serif;
-      font-weight: 700;
-      line-height: 1.05;
-      transform: rotate(-8deg);
-      opacity: .82;
-      background: rgba(255, 255, 255, .72);
-      box-shadow: inset 0 0 0 3px rgba(36, 87, 166, .16), inset 0 0 0 5px rgba(36, 87, 166, .72);
-    }
-
-    .company-stamp img {
-      width: 56px;
-      height: 38px;
-      object-fit: contain;
-      margin: 3px 0;
-    }
-
-    .company-stamp .stamp-top,
-    .company-stamp .stamp-bottom {
-      font-size: 7px;
-      letter-spacing: .8px;
-      text-transform: uppercase;
-    }
-
     .lease-signature-image {
       display: block;
       width: 260px;
@@ -2965,16 +2923,11 @@ const handleLogin = async (event) => {
         <div class="signature-name">Name: ${safe(tenantName)}</div>
         <div class="signature-date">Date: ____________________</div>
       </div>
-      <div class="signature authorized-signature">
+      <div class="signature">
         <strong class="signature-title">Riiroow Apartments Management</strong>
         <div class="signature-mark-space"></div>
         <div class="signature-name">Name: ____________________</div>
         <div class="signature-date">Date: ____________________</div>
-        <div class="company-stamp" aria-label="Riiroow Apartments official management stamp">
-          <span class="stamp-top">Riiroow Apartments</span>
-          <img src="${window.location.origin}${import.meta.env.BASE_URL}riiroow-logo.png" alt="Riiroow logo">
-          <span class="stamp-bottom">Official Management</span>
-        </div>
       </div>
     </div>
   ` : `
